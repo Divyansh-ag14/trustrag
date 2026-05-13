@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
-    DATABASE_URL: str = "postgresql+asyncpg://trustrag:trustrag@localhost:5432/trustrag"
-    DATABASE_SYNC_URL: str = "postgresql://trustrag:trustrag@localhost:5432/trustrag"
+    DATABASE_URL: str = "postgresql+asyncpg://trustrag:trustrag_dev@localhost:5435/trustrag"
+    DATABASE_SYNC_URL: str = "postgresql://trustrag:trustrag_dev@localhost:5435/trustrag"
 
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333

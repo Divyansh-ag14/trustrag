@@ -28,6 +28,8 @@ class RetrievedChunk:
     rrf_score: float = 0.0
     freshness_score: float = 1.0
     doc_updated_at: datetime | None = None
+    rerank_score: float = 0.0
+    final_score: float = 0.0
     retrieval_method: str = "hybrid"
 
 

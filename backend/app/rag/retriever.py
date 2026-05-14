@@ -112,7 +112,7 @@ async def _bm25_search(
             ts_rank_cd(dc.search_vector, plainto_tsquery('english', :query)) as rank_score
         FROM document_chunks dc
         JOIN documents d ON d.id = dc.document_id
-        WHERE d.workspace_id = :workspace_id::uuid
+        WHERE d.workspace_id = CAST(:workspace_id AS uuid)
           AND d.status = 'active'
           AND dc.search_vector @@ plainto_tsquery('english', :query)
           {filter_clause}

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import RequestIDMiddleware
-from app.api.routes import auth, documents, health
+from app.api.routes import auth, chat, documents, health
 from app.config import settings
 from app.utils.logging import setup_logging
 
@@ -39,4 +39,5 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")

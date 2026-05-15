@@ -70,12 +70,14 @@ export default function DocumentsPage() {
           </p>
         </div>
         <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5">
-              <Plus className="h-4 w-4" />
-              Upload
-            </Button>
-          </DialogTrigger>
+          <DialogTrigger
+            render={
+              <Button size="sm" className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Upload
+              </Button>
+            }
+          />
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Upload documents</DialogTitle>

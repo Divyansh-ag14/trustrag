@@ -1,0 +1,166 @@
+{
+  "name": "TrustRAG Golden Set v1",
+  "description": "20 evaluation items across 5 query types for AcmeSaaS knowledge base",
+  "items": [
+    {
+      "question": "What is the refund policy for enterprise customers?",
+      "expected_answer": "Enterprise plan refund terms are defined in the individual enterprise agreement. Service changes do not qualify for refunds, but affected customers can contact their account manager for options like rate limit increases or plan modifications.",
+      "expected_source_docs": ["policies/refund-policy.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["policy", "refund", "enterprise"]
+    },
+    {
+      "question": "How do I set up Slack integration with AcmeSaaS?",
+      "expected_answer": "Go to Settings > Integrations > Slack, click Connect to Slack, authorize the OAuth connection, select which channels receive notifications, and configure notification preferences.",
+      "expected_source_docs": ["product_docs/integrations.md"],
+      "query_type": "procedural",
+      "difficulty": "easy",
+      "tags": ["integration", "slack", "setup"]
+    },
+    {
+      "question": "What are the API rate limits for the Pro plan?",
+      "expected_answer": "Pro plan has 1,000 requests per minute and 50,000 requests per day.",
+      "expected_source_docs": ["faqs/limits-faq.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["api", "rate-limits", "pro"]
+    },
+    {
+      "question": "What changed in AcmeSaaS v3.2?",
+      "expected_answer": "v3.2 introduced custom fields, project templates, and enhanced search. It also reduced Enterprise API rate limits from 10,000 to 5,000 req/min and updated Jira OAuth scopes requiring re-authorization.",
+      "expected_source_docs": ["release_notes/v3.2-release.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["release", "v3.2", "changes"]
+    },
+    {
+      "question": "How do I invite users to my workspace?",
+      "expected_answer": "Go to Settings > Users, click Invite User, enter the email address, select a role (Admin or Member), optionally assign them to projects, and click Send Invite. Invitations expire after 7 days.",
+      "expected_source_docs": ["product_docs/user-management.md"],
+      "query_type": "procedural",
+      "difficulty": "easy",
+      "tags": ["users", "invite", "workspace"]
+    },
+    {
+      "question": "What's the difference between Pro and Enterprise SSO support?",
+      "expected_answer": "Pro plan supports Google and Microsoft SSO only. Enterprise plan supports full SAML SSO with custom identity providers and the ability to enforce SSO for all non-owner accounts.",
+      "expected_source_docs": ["product_docs/user-management.md"],
+      "query_type": "comparison",
+      "difficulty": "medium",
+      "tags": ["sso", "plans", "comparison"]
+    },
+    {
+      "question": "My Jira integration stopped syncing after updating to v3.2. What should I do?",
+      "expected_answer": "AcmeSaaS v3.2 changed the Jira OAuth scope requirements. Go to Settings > Integrations > Jira and click Reconnect to re-authorize with the new scopes.",
+      "expected_source_docs": ["troubleshooting/integration-issues.md", "release_notes/v3.2-release.md"],
+      "query_type": "troubleshooting",
+      "difficulty": "medium",
+      "tags": ["jira", "sync", "v3.2"]
+    },
+    {
+      "question": "How do I authenticate with the AcmeSaaS API?",
+      "expected_answer": "Generate an API key from Settings > API Keys, then include it in the Authorization header as Bearer token. Enterprise customers can also use OAuth 2.0 for user-level access.",
+      "expected_source_docs": ["api_docs/authentication.md"],
+      "query_type": "procedural",
+      "difficulty": "easy",
+      "tags": ["api", "authentication", "setup"]
+    },
+    {
+      "question": "Can I get a refund on an annual plan after 60 days?",
+      "expected_answer": "Yes, prorated refunds are available after 30 days. The prorated amount equals remaining full months divided by 12 multiplied by the annual payment. Partial months are not eligible.",
+      "expected_source_docs": ["policies/refund-policy.md"],
+      "query_type": "factual",
+      "difficulty": "medium",
+      "tags": ["refund", "annual", "prorated"]
+    },
+    {
+      "question": "What happens if my payment fails?",
+      "expected_answer": "Payment is retried 3 times over 7 days. The workspace remains functional during this period. If not resolved after 7 days, the workspace is downgraded to Free. Data is preserved for 30 days.",
+      "expected_source_docs": ["faqs/billing-faq.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["billing", "payment", "failure"]
+    },
+    {
+      "question": "What are the keyboard shortcuts in AcmeSaaS?",
+      "expected_answer": "Cmd/Ctrl+K for quick search, Cmd/Ctrl+N for new task, Cmd/Ctrl+Shift+P for project switching, Cmd/Ctrl+. for sidebar toggle, Cmd/Ctrl+Enter for submit.",
+      "expected_source_docs": ["product_docs/getting-started.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["shortcuts", "keyboard", "navigation"]
+    },
+    {
+      "question": "How do I connect GitHub to AcmeSaaS?",
+      "expected_answer": "Go to Settings > Integrations > GitHub, click Connect to GitHub, install the AcmeSaaS GitHub App on your organization, select repositories, and map them to AcmeSaaS projects.",
+      "expected_source_docs": ["product_docs/integrations.md"],
+      "query_type": "procedural",
+      "difficulty": "easy",
+      "tags": ["github", "integration", "setup"]
+    },
+    {
+      "question": "What user roles are available and what can each role do?",
+      "expected_answer": "Four roles: Owner (full access, can delete workspace), Admin (manage users, projects, settings), Member (create and manage own projects, assigned tasks), and Viewer (Enterprise only, read-only access).",
+      "expected_source_docs": ["product_docs/user-management.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["roles", "permissions", "users"]
+    },
+    {
+      "question": "Why are my webhooks failing to deliver?",
+      "expected_answer": "Check that the endpoint URL is publicly accessible with HTTPS, responds within 10 seconds, can handle up to 1MB payloads, and returns HTTP 200. Self-signed certificates are not accepted. Failed deliveries can be manually retried from the webhook log.",
+      "expected_source_docs": ["troubleshooting/integration-issues.md"],
+      "query_type": "troubleshooting",
+      "difficulty": "medium",
+      "tags": ["webhooks", "troubleshooting", "delivery"]
+    },
+    {
+      "question": "A customer on the Enterprise plan says their API rate limit was reduced after last month's update, and they want a refund for the downgrade. What's the policy and what changed?",
+      "expected_answer": "The v3.2 release reduced Enterprise API rate limits from 10,000 to 5,000 req/min for platform stability. Per the refund policy, service changes do not qualify for refunds. However, affected Enterprise customers can request a rate limit increase through their account manager.",
+      "expected_source_docs": ["release_notes/v3.2-release.md", "policies/refund-policy.md", "faqs/limits-faq.md"],
+      "query_type": "multi_hop",
+      "difficulty": "hard",
+      "tags": ["api", "rate-limit", "refund", "multi-hop"]
+    },
+    {
+      "question": "How much does the Pro plan cost?",
+      "expected_answer": "$12/user/month billed annually or $15/user/month billed monthly. Annual billing is 20% cheaper than monthly.",
+      "expected_source_docs": ["faqs/billing-faq.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["pricing", "pro", "billing"]
+    },
+    {
+      "question": "What are the storage limits for each plan?",
+      "expected_answer": "Free: 100 MB total, Pro: 10 GB per user, Enterprise: unlimited. Storage is consumed by file attachments and uploaded documents, not text content.",
+      "expected_source_docs": ["faqs/limits-faq.md"],
+      "query_type": "comparison",
+      "difficulty": "easy",
+      "tags": ["storage", "limits", "plans"]
+    },
+    {
+      "question": "How do I set up SAML SSO?",
+      "expected_answer": "SAML SSO is Enterprise only. Go to Settings > Security > SSO, select SAML, enter IdP metadata URL or upload metadata XML, configure attribute mappings for email, name, and role, then enable Enforce SSO to require SSO login for all non-owner accounts.",
+      "expected_source_docs": ["product_docs/user-management.md"],
+      "query_type": "procedural",
+      "difficulty": "medium",
+      "tags": ["sso", "saml", "enterprise", "setup"]
+    },
+    {
+      "question": "What is the webhook retry policy?",
+      "expected_answer": "Failed webhook deliveries are retried 3 times with exponential backoff at 1 minute, 5 minutes, and 15 minutes. After 3 failures, the webhook is disabled and an admin notification is sent.",
+      "expected_source_docs": ["product_docs/integrations.md"],
+      "query_type": "factual",
+      "difficulty": "medium",
+      "tags": ["webhooks", "retry", "policy"]
+    },
+    {
+      "question": "Is there a free trial and what happens when it ends?",
+      "expected_answer": "Yes, all new workspaces get a 14-day free trial of the Pro plan with no credit card required. After the trial, you can upgrade to a paid plan or continue on the Free plan.",
+      "expected_source_docs": ["faqs/billing-faq.md"],
+      "query_type": "factual",
+      "difficulty": "easy",
+      "tags": ["trial", "free", "billing"]
+    }
+  ]
+}

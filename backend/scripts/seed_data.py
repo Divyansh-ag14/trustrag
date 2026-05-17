@@ -89,15 +89,11 @@ async def ingest_document(
         print(f"  SKIP {title} (already ingested)")
         return
 
-    file_size = full_path.stat().st_size
-
     doc = Document(
         workspace_id=workspace_id,
         title=title,
         source_type=source_type,
-        file_path=str(full_path),
-        file_size_bytes=file_size,
-        mime_type="text/markdown",
+        source_url=str(full_path),
         status="processing",
         uploaded_by=user_id,
     )
@@ -107,7 +103,7 @@ async def ingest_document(
     job = IngestionJob(
         workspace_id=workspace_id,
         document_id=doc.id,
-        status="processing",
+        status="queued",
     )
     session.add(job)
     await session.flush()
@@ -115,15 +111,9 @@ async def ingest_document(
     print(f"  Processing: {title}...")
 
     try:
-        await process_document(doc.id, session)
-        job.status = "completed"
-        await session.flush()
+        await process_document(session, doc.id, str(full_path))
         print(f"  OK: {title} (ingested)")
     except Exception as e:
-        job.status = "failed"
-        job.error_message = str(e)
-        doc.status = "failed"
-        await session.flush()
         print(f"  FAIL: {title} — {e}")
 
 

@@ -84,13 +84,19 @@ async def process_query(
             cost_usd=cost,
             citations=[c.copy() for c in citations],
             status=status,
-            has_conflicts=gen_result.has_conflicts,
+            retrieval_trace={"has_conflicts": gen_result.has_conflicts},
         )
         db.add(result_record)
         await db.flush()
 
+        # Save retrieval trace — skip chunks not in DB (e.g. stale Qdrant entries)
         used_chunk_ids = {str(c.chunk_id) for c in context_result.chunks_used}
+        chunk_ids_to_check = [str(c.chunk_id) for c in ranked]
+        existing_chunk_ids = await _get_existing_chunk_ids(db, chunk_ids_to_check)
+
         for rank, chunk in enumerate(ranked, start=1):
+            if str(chunk.chunk_id) not in existing_chunk_ids:
+                continue
             chunk_record = RetrievedChunkModel(
                 query_result_id=result_record.id,
                 chunk_id=chunk.chunk_id,
@@ -220,3 +226,14 @@ def _build_citations(
                 "relevance_score": chunk.final_score or chunk.rrf_score,
             })
     return citations
+
+
+async def _get_existing_chunk_ids(db: AsyncSession, chunk_ids: list[str]) -> set[str]:
+    """Check which chunk IDs actually exist in the database."""
+    if not chunk_ids:
+        return set()
+    from sqlalchemy import text
+    placeholders = ", ".join(f"'{cid}'::uuid" for cid in chunk_ids)
+    sql = text(f"SELECT id FROM document_chunks WHERE id IN ({placeholders})")
+    result = await db.execute(sql)
+    return {str(row.id) for row in result.fetchall()}

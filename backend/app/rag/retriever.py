@@ -59,16 +59,16 @@ async def _vector_search(
             ]
         )
 
-    results = qdrant.search(
+    results = qdrant.query_points(
         collection_name=collection,
-        query_vector=query_embedding,
+        query=query_embedding,
         limit=top_k,
         query_filter=qdrant_filter,
         with_payload=True,
     )
 
     chunks = []
-    for hit in results:
+    for hit in results.points:
         payload = hit.payload or {}
         chunks.append(RetrievedChunk(
             chunk_id=uuid.UUID(payload.get("chunk_id", str(uuid.uuid4()))),

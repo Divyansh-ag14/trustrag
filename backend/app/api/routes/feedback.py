@@ -4,14 +4,16 @@ import uuid
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Query as QueryParam
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.feedback import Feedback
-from app.models.query import Query, QueryResult
+from app.models.query import Query as QueryModel
+from app.models.query import QueryResult
 from app.models.user import User
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse, FeedbackReview
 
@@ -59,16 +61,16 @@ async def submit_feedback(
 async def list_feedback(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    rating: str | None = Query(None, pattern="^(up|down)$"),
+    rating: str | None = QueryParam(None, pattern="^(up|down)$"),
     reviewed: bool | None = None,
-    offset: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    offset: int = QueryParam(0, ge=0),
+    limit: int = QueryParam(50, ge=1, le=200),
 ):
     query = (
         select(Feedback)
         .join(QueryResult, Feedback.query_result_id == QueryResult.id)
-        .join(Query, QueryResult.query_id == Query.id)
-        .where(Query.workspace_id == user.workspace_id)
+        .join(QueryModel, QueryResult.query_id == QueryModel.id)
+        .where(QueryModel.workspace_id == user.workspace_id)
         .order_by(desc(Feedback.created_at))
     )
 

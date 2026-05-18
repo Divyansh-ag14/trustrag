@@ -86,14 +86,66 @@ export interface FeedbackItem {
   created_at: string;
 }
 
+export interface EvaluationDataset {
+  id: string;
+  name: string;
+  description: string | null;
+  item_count: number;
+  created_at: string;
+}
+
+export interface EvaluationItem {
+  id: string;
+  question: string;
+  expected_answer: string;
+  expected_source_docs: string[];
+  query_type: string | null;
+  difficulty: string | null;
+  tags: string[];
+}
+
 export interface EvaluationRun {
   id: string;
   dataset_id: string;
   name: string | null;
   metrics: Record<string, number>;
-  status: "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed";
   started_at: string;
   completed_at: string | null;
+}
+
+export interface EvaluationRunDetail extends EvaluationRun {
+  per_item_results: EvalItemResult[];
+}
+
+export interface EvalItemResult {
+  item_id: string;
+  question: string;
+  expected_answer: string;
+  actual_answer: string;
+  status: string;
+  confidence: number;
+  has_citation: boolean;
+  latency_ms: number;
+  cost_usd: number;
+  query_type: string | null;
+  difficulty: string | null;
+  metrics: {
+    recall_at_10: number;
+    precision_at_10: number;
+    mrr: number;
+    ndcg_at_10: number;
+    hit_rate: number;
+    avg_precision: number;
+  };
+}
+
+export interface FeedbackStats {
+  total: number;
+  positive: number;
+  negative: number;
+  reviewed: number;
+  unreviewed: number;
 }
 
 export interface ApiError {

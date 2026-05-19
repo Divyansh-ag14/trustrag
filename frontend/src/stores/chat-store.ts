@@ -20,6 +20,7 @@ interface ChatStore {
       has_conflicts?: boolean;
       follow_up_suggestions?: string[];
       latency_breakdown?: Record<string, number>;
+      result_id?: string;
     },
   ) => void;
   setStreaming: (streaming: boolean) => void;

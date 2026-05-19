@@ -10,6 +10,7 @@ export interface ChatMessage {
   has_conflicts?: boolean;
   follow_up_suggestions?: string[];
   latency_breakdown?: Record<string, number>;
+  result_id?: string;
   isStreaming?: boolean;
   timestamp: number;
 }

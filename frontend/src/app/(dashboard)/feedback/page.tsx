@@ -31,8 +31,8 @@ export default function FeedbackPage() {
       if (activeTab === "unreviewed") params.set("reviewed", "false");
 
       const [items, statsData] = await Promise.all([
-        api.get<FeedbackItem[]>(`/api/v1/feedback?${params.toString()}`),
-        api.get<FeedbackStats>("/api/v1/feedback/stats"),
+        api.get<FeedbackItem[]>(`/feedback?${params.toString()}`),
+        api.get<FeedbackStats>("/feedback/stats"),
       ]);
       setFeedback(items);
       setStats(statsData);
@@ -51,7 +51,7 @@ export default function FeedbackPage() {
   const submitReview = async (feedbackId: string) => {
     if (!reviewNote.trim()) return;
     try {
-      await api.patch(`/api/v1/feedback/${feedbackId}/review`, {
+      await api.patch(`/feedback/${feedbackId}/review`, {
         review_note: reviewNote,
       });
       setReviewingId(null);

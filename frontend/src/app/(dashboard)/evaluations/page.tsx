@@ -77,8 +77,8 @@ export default function EvaluationsPage() {
   const fetchData = useCallback(async () => {
     try {
       const [ds, rs] = await Promise.all([
-        api.get<EvaluationDataset[]>("/api/v1/evaluation/datasets"),
-        api.get<EvaluationRun[]>("/api/v1/evaluation/runs"),
+        api.get<EvaluationDataset[]>("/evaluation/datasets"),
+        api.get<EvaluationRun[]>("/evaluation/runs"),
       ]);
       setDatasets(ds);
       setRuns(rs);
@@ -106,7 +106,7 @@ export default function EvaluationsPage() {
     if (datasets.length === 0) return;
     setTriggering(true);
     try {
-      await api.post("/api/v1/evaluation/runs", {
+      await api.post("/evaluation/runs", {
         dataset_id: datasets[0].id,
       });
       await fetchData();
@@ -124,7 +124,7 @@ export default function EvaluationsPage() {
     }
     try {
       const detail = await api.get<EvaluationRunDetail>(
-        `/api/v1/evaluation/runs/${runId}`
+        `/evaluation/runs/${runId}`
       );
       setSelectedRun(detail);
     } catch {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ConfidenceBadge } from "./confidence-badge";
 import { useChatStore } from "@/stores/chat-store";
 import { api } from "@/lib/api-client";
+import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types/chat";
 import type { Citation } from "@/types/api";
@@ -47,8 +48,14 @@ function renderContentWithCitations(
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const setActiveCitation = useChatStore((s) => s.setActiveCitation);
+  const setCitationPanelOpen = useAppStore((s) => s.setCitationPanelOpen);
   const isUser = message.role === "user";
   const [feedbackSent, setFeedbackSent] = useState<"up" | "down" | null>(null);
+
+  const handleCitationClick = (citation: Citation) => {
+    setActiveCitation(citation);
+    setCitationPanelOpen(true);
+  };
 
   const handleFeedback = async (rating: "up" | "down") => {
     if (feedbackSent || !message.result_id) return;
@@ -79,7 +86,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : renderContentWithCitations(
                 message.content,
                 message.citations,
-                setActiveCitation,
+                handleCitationClick,
               )}
           {message.isStreaming && (
             <Loader2 className="inline-block h-3 w-3 ml-1 animate-spin" />

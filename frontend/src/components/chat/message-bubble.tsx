@@ -1,9 +1,11 @@
 "use client";
 
-import { ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { ThumbsUp, ThumbsDown, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfidenceBadge } from "./confidence-badge";
 import { useChatStore } from "@/stores/chat-store";
+import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types/chat";
 import type { Citation } from "@/types/api";
@@ -46,6 +48,20 @@ function renderContentWithCitations(
 export function MessageBubble({ message }: MessageBubbleProps) {
   const setActiveCitation = useChatStore((s) => s.setActiveCitation);
   const isUser = message.role === "user";
+  const [feedbackSent, setFeedbackSent] = useState<"up" | "down" | null>(null);
+
+  const handleFeedback = async (rating: "up" | "down") => {
+    if (feedbackSent || !message.result_id) return;
+    try {
+      await api.post("/feedback", {
+        query_result_id: message.result_id,
+        rating,
+      });
+      setFeedbackSent(rating);
+    } catch {
+      // silent
+    }
+  };
 
   return (
     <div className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")}>
@@ -74,12 +90,31 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/30">
             <ConfidenceBadge confidence={message.confidence} />
             <div className="flex-1" />
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-emerald-400">
-              <ThumbsUp className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-400">
-              <ThumbsDown className="h-3.5 w-3.5" />
-            </Button>
+            {feedbackSent ? (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                {feedbackSent === "up" ? "Helpful" : "Not helpful"}
+              </span>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-emerald-400"
+                  onClick={() => handleFeedback("up")}
+                >
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-red-400"
+                  onClick={() => handleFeedback("down")}
+                >
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
           </div>
         )}
 

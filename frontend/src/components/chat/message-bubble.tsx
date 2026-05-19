@@ -13,6 +13,7 @@ import type { Citation } from "@/types/api";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  onSendMessage?: (query: string) => void;
 }
 
 function renderContentWithCitations(
@@ -46,7 +47,7 @@ function renderContentWithCitations(
   });
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onSendMessage }: MessageBubbleProps) {
   const setActiveCitation = useChatStore((s) => s.setActiveCitation);
   const setCitationPanelOpen = useAppStore((s) => s.setCitationPanelOpen);
   const isUser = message.role === "user";
@@ -131,6 +132,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <button
                 key={i}
                 className="text-xs text-muted-foreground hover:text-foreground border border-border/40 rounded-md px-2 py-1 transition-colors"
+                onClick={() => onSendMessage?.(suggestion)}
               >
                 {suggestion}
               </button>

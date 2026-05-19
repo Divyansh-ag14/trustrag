@@ -39,6 +39,12 @@ export function useChat() {
         });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+            window.location.href = "/login";
+            return;
+          }
           const error = await response.json().catch(() => ({ detail: "Request failed" }));
           finalizeAssistant(assistantId, {
             status: "error",

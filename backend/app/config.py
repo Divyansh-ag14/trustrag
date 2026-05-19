@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     JWT_SECRET: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_EXPIRE_MINUTES: int = 15
+    JWT_ACCESS_EXPIRE_MINUTES: int = 1440
     JWT_REFRESH_EXPIRE_DAYS: int = 7
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"

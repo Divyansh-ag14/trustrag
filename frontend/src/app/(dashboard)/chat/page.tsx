@@ -59,7 +59,7 @@ export default function ChatPage() {
           <ScrollArea className="flex-1 p-4" ref={scrollRef}>
             <div className="max-w-3xl mx-auto space-y-4 pb-4">
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble key={message.id} message={message} onSendMessage={sendMessage} />
               ))}
             </div>
           </ScrollArea>

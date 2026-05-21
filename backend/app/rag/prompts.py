@@ -26,28 +26,8 @@ Question: {query}
 
 Answer using only the context above. Cite every claim with [N] markers."""
 
-QUERY_CLASSIFICATION_SYSTEM = """Classify the user query and optimize it for retrieval.
-
-Return JSON:
-{{
-  "rewritten_query": "optimized search query",
-  "query_type": "factual|procedural|troubleshooting|comparison|multi_hop|conversational",
-  "intent": "lookup|explain|compare|troubleshoot|summarize|follow_up",
-  "date_sensitive": true/false,
-  "ambiguity": "low|medium|high",
-  "metadata_filters": {{"source_types": [], "date_range": {{}}}}
-}}"""
-
-CITATION_VALIDATION_PROMPT = """Given the source text and the claim, classify the support level.
-
-Source: {source_text}
-Claim: {claim}
-
-Respond with exactly one of: supported, partially_supported, not_supported"""
-
-HALLUCINATION_CHECK_PROMPT = """Determine if this claim is entailed by the given context.
-
-Context: {context}
-Claim: {claim}
-
-Respond with exactly one of: entailed, neutral, contradicted"""
+# Query classification, citation validation, and hallucination check prompts
+# are defined in their respective modules:
+# - query_understanding.py
+# - citation_validator.py
+# - hallucination_checker.py

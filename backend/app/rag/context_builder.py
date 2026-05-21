@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import structlog
 
@@ -7,6 +8,8 @@ from app.utils.tokens import count_tokens
 
 logger = structlog.get_logger()
 
+STALENESS_THRESHOLD_DAYS = 180
+
 
 @dataclass
 class ContextResult:
@@ -14,6 +17,7 @@ class ContextResult:
     chunks_used: list[RetrievedChunk]
     total_tokens: int
     has_conflicts: bool = False
+    stale_sources: list[str] = field(default_factory=list)
 
 
 def _jaccard_similarity(text_a: str, text_b: str) -> float:
@@ -60,6 +64,48 @@ def _enforce_diversity(
     return diverse
 
 
+def _detect_stale_sources(chunks: list[RetrievedChunk]) -> list[str]:
+    """Flag sources older than STALENESS_THRESHOLD_DAYS."""
+    now = datetime.now(timezone.utc)
+    stale = []
+    for chunk in chunks:
+        if chunk.doc_updated_at:
+            age_days = (now - chunk.doc_updated_at).days
+            if age_days > STALENESS_THRESHOLD_DAYS:
+                title = chunk.document_title
+                if title not in stale:
+                    stale.append(title)
+    return stale
+
+
+def _detect_conflicts(chunks: list[RetrievedChunk]) -> bool:
+    """Check if top chunks from different documents might conflict.
+
+    Heuristic: if chunks from 2+ documents on similar topics have update dates
+    more than 90 days apart, flag potential conflict for the generator to handle.
+    """
+    if len(chunks) < 2:
+        return False
+
+    doc_dates: dict[str, datetime] = {}
+    for chunk in chunks:
+        doc_key = str(chunk.document_id)
+        if chunk.doc_updated_at and doc_key not in doc_dates:
+            doc_dates[doc_key] = chunk.doc_updated_at
+
+    if len(doc_dates) < 2:
+        return False
+
+    dates = list(doc_dates.values())
+    for i in range(len(dates)):
+        for j in range(i + 1, len(dates)):
+            gap_days = abs((dates[i] - dates[j]).days)
+            if gap_days > 90:
+                return True
+
+    return False
+
+
 def _format_citation(index: int, chunk: RetrievedChunk) -> str:
     date_str = ""
     if chunk.doc_updated_at:
@@ -103,9 +149,15 @@ def build_context(
         selected.append(chunk)
         total_tokens += needed
 
+    has_conflicts = _detect_conflicts(selected)
+    stale_sources = _detect_stale_sources(selected)
+
     context_parts = []
     for i, chunk in enumerate(selected, start=1):
         context_parts.append(_format_citation(i, chunk))
+
+    if has_conflicts:
+        context_parts.insert(0, "NOTE: The following sources may contain conflicting information from different time periods. Present all perspectives with their dates.")
 
     formatted = "\n\n".join(context_parts)
 
@@ -116,10 +168,14 @@ def build_context(
         after_diversity=len(diverse),
         selected=len(selected),
         total_tokens=total_tokens,
+        has_conflicts=has_conflicts,
+        stale_sources=stale_sources,
     )
 
     return ContextResult(
         formatted_context=formatted,
         chunks_used=selected,
         total_tokens=total_tokens,
+        has_conflicts=has_conflicts,
+        stale_sources=stale_sources,
     )

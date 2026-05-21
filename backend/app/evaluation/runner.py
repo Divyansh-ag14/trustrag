@@ -19,8 +19,11 @@ from app.evaluation.metrics import (
 )
 from app.models.document import Document
 from app.models.evaluation import EvaluationDataset, EvaluationItem, EvaluationRun
+from app.rag.citation_validator import validate_citations
 from app.rag.context_builder import build_context
 from app.rag.generator import generate
+from app.rag.hallucination_checker import check_hallucination
+from app.rag.query_understanding import analyze_query
 from app.rag.reranker import rerank
 from app.rag.retriever import hybrid_retrieve
 
@@ -98,6 +101,9 @@ async def run_evaluation(
         "avg_precision": [],
         "avg_latency_ms": [],
         "avg_confidence": [],
+        "faithfulness": [],
+        "citation_accuracy": [],
+        "hallucination_rate": [],
         "total_cost_usd": 0.0,
     }
 
@@ -137,7 +143,10 @@ async def run_evaluation(
 
     # Compute aggregate metrics
     final_metrics = {}
-    for key in ["recall_at_10", "precision_at_10", "mrr", "ndcg_at_10", "hit_rate", "avg_precision"]:
+    for key in [
+        "recall_at_10", "precision_at_10", "mrr", "ndcg_at_10",
+        "hit_rate", "avg_precision", "faithfulness", "citation_accuracy", "hallucination_rate",
+    ]:
         values = aggregate_metrics[key]
         final_metrics[key] = round(sum(values) / len(values), 4) if values else 0.0
 
@@ -174,7 +183,7 @@ async def _evaluate_single_item(
     workspace_id: uuid.UUID,
     aggregate_metrics: dict,
 ) -> dict:
-    """Run a single evaluation item through the pipeline and compute its metrics."""
+    """Run a single evaluation item through the full advanced pipeline and compute its metrics."""
     start = time.perf_counter()
 
     # Resolve expected source doc paths to document IDs
@@ -182,9 +191,13 @@ async def _evaluate_single_item(
         db, workspace_id, item.expected_source_docs
     )
 
-    # Step 1: Retrieve
+    # Step 0: Query understanding
+    analysis = analyze_query(item.question)
+    search_query = analysis.rewritten_query
+
+    # Step 1: Retrieve (using rewritten query)
     retrieved = await hybrid_retrieve(
-        item.question, workspace_id, db, top_k=settings.RETRIEVAL_TOP_K
+        search_query, workspace_id, db, top_k=settings.RETRIEVAL_TOP_K
     )
 
     # Get retrieved document IDs (deduplicated, preserving order)
@@ -215,6 +228,9 @@ async def _evaluate_single_item(
     confidence = 0.0
     citations_used = []
     gen_cost = 0.0
+    faithfulness_score = 1.0
+    hallucination_score = 0.0
+    citation_accuracy_score = 1.0
 
     if context_result.formatted_context.strip():
         gen_result = generate(item.question, context_result.formatted_context, "AcmeSaaS")
@@ -224,6 +240,25 @@ async def _evaluate_single_item(
 
         from app.utils.costs import calculate_llm_cost
         gen_cost = calculate_llm_cost(gen_result.prompt_tokens, gen_result.completion_tokens)
+
+        # Step 4: Citation validation
+        cv_result = validate_citations(
+            gen_result.answer, gen_result.citations_used, context_result.chunks_used
+        )
+        citation_accuracy_score = cv_result.citation_accuracy
+        gen_cost += calculate_llm_cost(
+            cv_result.prompt_tokens, cv_result.completion_tokens, model="gpt-4o-mini"
+        )
+
+        # Step 5: Hallucination check
+        hc_result = check_hallucination(
+            gen_result.answer, context_result.formatted_context
+        )
+        faithfulness_score = hc_result.faithfulness_score
+        hallucination_score = hc_result.hallucination_score
+        gen_cost += calculate_llm_cost(
+            hc_result.prompt_tokens, hc_result.completion_tokens, model="gpt-4o-mini"
+        )
 
     latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -244,6 +279,9 @@ async def _evaluate_single_item(
     aggregate_metrics["avg_precision"].append(item_ap)
     aggregate_metrics["avg_latency_ms"].append(latency_ms)
     aggregate_metrics["avg_confidence"].append(confidence)
+    aggregate_metrics["faithfulness"].append(faithfulness_score)
+    aggregate_metrics["citation_accuracy"].append(citation_accuracy_score)
+    aggregate_metrics["hallucination_rate"].append(hallucination_score)
     aggregate_metrics["total_cost_usd"] += gen_cost
 
     has_citation = len(citations_used) > 0
@@ -265,6 +303,9 @@ async def _evaluate_single_item(
             "ndcg_at_10": round(item_ndcg, 4),
             "hit_rate": round(item_hit, 4),
             "avg_precision": round(item_ap, 4),
+            "faithfulness": round(faithfulness_score, 4),
+            "citation_accuracy": round(citation_accuracy_score, 4),
+            "hallucination_rate": round(hallucination_score, 4),
         },
         "confidence": confidence,
         "has_citation": has_citation,

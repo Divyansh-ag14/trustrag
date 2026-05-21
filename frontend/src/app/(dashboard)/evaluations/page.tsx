@@ -34,11 +34,14 @@ interface MetricCard {
 
 const METRIC_CARDS: MetricCard[] = [
   { label: "Recall@10", key: "recall_at_10", format: "percent", target: 0.8, higherIsBetter: true },
-  { label: "Precision@10", key: "precision_at_10", format: "percent", target: 0.6, higherIsBetter: true },
   { label: "MRR", key: "mrr", format: "percent", target: 0.7, higherIsBetter: true },
   { label: "NDCG@10", key: "ndcg_at_10", format: "percent", target: 0.75, higherIsBetter: true },
+  { label: "Faithfulness", key: "faithfulness", format: "percent", target: 0.85, higherIsBetter: true },
+  { label: "Citation Accuracy", key: "citation_accuracy", format: "percent", target: 0.9, higherIsBetter: true },
+  { label: "Hallucination", key: "hallucination_rate", format: "percent", target: 0.1, higherIsBetter: false },
   { label: "Avg Confidence", key: "avg_confidence", format: "percent", target: 0.8, higherIsBetter: true },
   { label: "Avg Latency", key: "avg_latency_ms", format: "ms", target: 5000, higherIsBetter: false },
+  { label: "Precision@10", key: "precision_at_10", format: "percent", target: 0.6, higherIsBetter: true },
 ];
 
 function formatMetric(value: number | undefined, format: string): string {
@@ -169,7 +172,7 @@ export default function EvaluationsPage() {
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
         {METRIC_CARDS.map((metric) => {
           const currentValue = latestRun?.metrics?.[metric.key];
           const previousValue = previousRun?.metrics?.[metric.key];
@@ -255,7 +258,7 @@ export default function EvaluationsPage() {
                     MRR
                   </th>
                   <th className="text-left py-2.5 px-4 font-medium text-muted-foreground">
-                    Confidence
+                    Faithfulness
                   </th>
                   <th className="text-left py-2.5 px-4 font-medium text-muted-foreground">
                     Latency
@@ -337,7 +340,7 @@ function RunRow({
         </td>
         <td className="py-2.5 px-4">
           {run.status === "completed"
-            ? formatMetric(run.metrics?.avg_confidence, "percent")
+            ? formatMetric(run.metrics?.faithfulness, "percent")
             : "--"}
         </td>
         <td className="py-2.5 px-4">
@@ -449,7 +452,7 @@ function ItemRow({
             </div>
           </div>
 
-          <div className="grid grid-cols-6 gap-2 text-xs">
+          <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 text-xs">
             <div>
               <span className="text-muted-foreground">Recall</span>
               <p className="font-medium">
@@ -472,6 +475,30 @@ function ItemRow({
               <span className="text-muted-foreground">NDCG</span>
               <p className="font-medium">
                 {(item.metrics.ndcg_at_10 * 100).toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Faithfulness</span>
+              <p className="font-medium">
+                {item.metrics.faithfulness !== undefined
+                  ? `${(item.metrics.faithfulness * 100).toFixed(1)}%`
+                  : "--"}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Citation Acc.</span>
+              <p className="font-medium">
+                {item.metrics.citation_accuracy !== undefined
+                  ? `${(item.metrics.citation_accuracy * 100).toFixed(1)}%`
+                  : "--"}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Hallucination</span>
+              <p className="font-medium">
+                {item.metrics.hallucination_rate !== undefined
+                  ? `${(item.metrics.hallucination_rate * 100).toFixed(1)}%`
+                  : "--"}
               </p>
             </div>
             <div>

@@ -137,6 +137,9 @@ export interface EvalItemResult {
     ndcg_at_10: number;
     hit_rate: number;
     avg_precision: number;
+    faithfulness?: number;
+    citation_accuracy?: number;
+    hallucination_rate?: number;
   };
 }
 

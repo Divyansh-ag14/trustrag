@@ -6,8 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.query import Query, QueryResult, RetrievedChunk as RetrievedChunkModel
+from app.rag.citation_validator import validate_citations
 from app.rag.context_builder import build_context
 from app.rag.generator import generate, GenerationResult
+from app.rag.hallucination_checker import check_hallucination
+from app.rag.query_understanding import analyze_query
 from app.rag.reranker import rerank
 from app.rag.retriever import hybrid_retrieve, RetrievedChunk
 from app.utils.costs import calculate_embedding_cost, calculate_llm_cost, calculate_rerank_cost
@@ -37,17 +40,37 @@ async def process_query(
     await db.flush()
 
     try:
+        # Stage 1: Query understanding
         t0 = time.perf_counter()
-        retrieved = await hybrid_retrieve(query, workspace_id, db, top_k=settings.RETRIEVAL_TOP_K)
+        analysis = analyze_query(query)
+        timings["query_understanding_ms"] = int((time.perf_counter() - t0) * 1000)
+
+        search_query = analysis.rewritten_query
+        query_record.rewritten_query = search_query
+        query_record.query_type = analysis.query_type
+        query_record.intent = analysis.intent
+        query_record.metadata_filters = analysis.metadata_filters
+
+        retrieval_filters = analysis.metadata_filters if analysis.metadata_filters else None
+
+        # Stage 2: Hybrid retrieval
+        t0 = time.perf_counter()
+        retrieved = await hybrid_retrieve(
+            search_query, workspace_id, db,
+            top_k=settings.RETRIEVAL_TOP_K,
+            filters=retrieval_filters,
+        )
         timings["retrieval_ms"] = int((time.perf_counter() - t0) * 1000)
 
         if not retrieved:
             return await _save_no_answer(db, query_record, timings, total_start)
 
+        # Stage 3: Reranking
         t0 = time.perf_counter()
-        ranked = rerank(query, retrieved, top_k=settings.RERANK_TOP_K)
+        ranked = rerank(search_query, retrieved, top_k=settings.RERANK_TOP_K)
         timings["rerank_ms"] = int((time.perf_counter() - t0) * 1000)
 
+        # Stage 4: Context construction (with conflict detection + staleness)
         t0 = time.perf_counter()
         context_result = build_context(ranked, token_budget=settings.CONTEXT_TOKEN_BUDGET)
         timings["context_build_ms"] = int((time.perf_counter() - t0) * 1000)
@@ -55,25 +78,75 @@ async def process_query(
         if not context_result.formatted_context.strip():
             return await _save_no_answer(db, query_record, timings, total_start)
 
+        # Stage 5: Generation
         t0 = time.perf_counter()
         gen_result = generate(query, context_result.formatted_context, workspace_name)
         timings["generation_ms"] = int((time.perf_counter() - t0) * 1000)
 
+        # Stage 6: Citation validation
+        t0 = time.perf_counter()
+        citation_validation = validate_citations(
+            gen_result.answer,
+            gen_result.citations_used,
+            context_result.chunks_used,
+        )
+        timings["citation_validation_ms"] = int((time.perf_counter() - t0) * 1000)
+
+        # Stage 7: Hallucination check
+        t0 = time.perf_counter()
+        hallucination_result = check_hallucination(
+            gen_result.answer,
+            context_result.formatted_context,
+        )
+        timings["hallucination_check_ms"] = int((time.perf_counter() - t0) * 1000)
+
         timings["total_ms"] = int((time.perf_counter() - total_start) * 1000)
 
+        # Apply hallucination threshold actions
+        answer = gen_result.answer
+        if hallucination_result.action == "block":
+            answer = (
+                "I was unable to generate a fully reliable answer. "
+                "Here are the most relevant sources I found:\n\n"
+                + "\n".join(
+                    f"- {c.document_title}: {c.content[:150]}..."
+                    for c in context_result.chunks_used[:5]
+                )
+            )
+        elif hallucination_result.action == "disclaimer":
+            if not answer.endswith("\n"):
+                answer += "\n"
+            answer += "\nNote: Some statements in this answer may not be fully supported by the available sources."
+
+        # Add staleness warning
+        if context_result.stale_sources:
+            sources_str = ", ".join(context_result.stale_sources[:3])
+            answer += f"\n\nNote: Some information comes from potentially outdated sources ({sources_str}). Please verify with the latest documentation."
+
         query_tokens = count_tokens(query)
-        cost = _calculate_total_cost(query_tokens, len(retrieved), gen_result)
+        validation_cost = calculate_llm_cost(
+            citation_validation.prompt_tokens + hallucination_result.prompt_tokens,
+            citation_validation.completion_tokens + hallucination_result.completion_tokens,
+            model="gpt-4o-mini",
+        )
+        qu_cost = calculate_llm_cost(0, 0, model="gpt-4o-mini")
+        cost = _calculate_total_cost(query_tokens, len(retrieved), gen_result) + validation_cost + qu_cost
 
         citations = _build_citations(gen_result, context_result.chunks_used)
 
         status = "success"
-        if gen_result.confidence < 0.6:
+        if hallucination_result.action == "block":
+            status = "low_confidence"
+        elif gen_result.confidence < 0.6:
             status = "low_confidence"
 
         result_record = QueryResult(
             query_id=query_record.id,
-            answer=gen_result.answer,
+            answer=answer,
             confidence_score=gen_result.confidence,
+            faithfulness_score=hallucination_result.faithfulness_score,
+            hallucination_score=hallucination_result.hallucination_score,
+            citation_accuracy=citation_validation.citation_accuracy,
             latency_ms=timings["total_ms"],
             latency_breakdown=timings,
             token_usage={
@@ -84,7 +157,15 @@ async def process_query(
             cost_usd=cost,
             citations=[c.copy() for c in citations],
             status=status,
-            retrieval_trace={"has_conflicts": gen_result.has_conflicts},
+            retrieval_trace={
+                "has_conflicts": context_result.has_conflicts,
+                "stale_sources": context_result.stale_sources,
+                "query_type": analysis.query_type,
+                "intent": analysis.intent,
+                "rewritten_query": analysis.rewritten_query,
+                "hallucination_action": hallucination_result.action,
+                "unsupported_citations": citation_validation.unsupported_citations,
+            },
         )
         db.add(result_record)
         await db.flush()
@@ -117,6 +198,9 @@ async def process_query(
             "pipeline.complete",
             query_id=str(query_record.id),
             confidence=gen_result.confidence,
+            faithfulness=hallucination_result.faithfulness_score,
+            citation_accuracy=citation_validation.citation_accuracy,
+            hallucination_action=hallucination_result.action,
             status=status,
             total_ms=timings["total_ms"],
             cost_usd=float(cost),
@@ -126,11 +210,14 @@ async def process_query(
             "query_id": query_record.id,
             "result_id": result_record.id,
             "session_id": query_record.session_id,
-            "answer": gen_result.answer,
+            "answer": answer,
             "citations": citations,
             "confidence_score": gen_result.confidence,
+            "faithfulness_score": hallucination_result.faithfulness_score,
+            "hallucination_score": hallucination_result.hallucination_score,
+            "citation_accuracy": citation_validation.citation_accuracy,
             "status": status,
-            "has_conflicts": gen_result.has_conflicts,
+            "has_conflicts": context_result.has_conflicts,
             "follow_up_suggestions": gen_result.follow_up_suggestions,
             "escalation_needed": gen_result.escalation_needed,
             "escalation_reason": gen_result.escalation_reason,

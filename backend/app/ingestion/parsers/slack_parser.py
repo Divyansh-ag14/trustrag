@@ -38,11 +38,20 @@ class SlackParser:
 
             if thread_ts and thread_ts != ts:
                 threads.setdefault(thread_ts, []).append(msg)
+            elif thread_ts:
+                threads.setdefault(thread_ts, []).insert(0, msg)
             else:
-                if thread_ts:
-                    threads.setdefault(thread_ts, []).insert(0, msg)
-                else:
-                    standalone.append(msg)
+                standalone.append(msg)
+
+        # Move standalone messages that are thread parents into their threads
+        remaining_standalone = []
+        for msg in standalone:
+            ts = msg.get("ts", "")
+            if ts in threads:
+                threads[ts].insert(0, msg)
+            else:
+                remaining_standalone.append(msg)
+        standalone = remaining_standalone
 
         parts = []
 

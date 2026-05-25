@@ -51,7 +51,7 @@ async def process_query(
         query_record.intent = analysis.intent
         query_record.metadata_filters = analysis.metadata_filters
 
-        retrieval_filters = analysis.metadata_filters if analysis.metadata_filters else None
+        retrieval_filters = await _validate_filters(db, workspace_id, analysis.metadata_filters)
 
         # Stage 2: Hybrid retrieval
         t0 = time.perf_counter()
@@ -62,6 +62,18 @@ async def process_query(
             date_sensitive=analysis.date_sensitive,
         )
         timings["retrieval_ms"] = int((time.perf_counter() - t0) * 1000)
+
+        if not retrieved:
+            # Retry without filters if query understanding filters were too strict
+            if retrieval_filters:
+                logger.info("pipeline.retry_without_filters")
+                t0 = time.perf_counter()
+                retrieved = await hybrid_retrieve(
+                    search_query, workspace_id, db,
+                    top_k=settings.RETRIEVAL_TOP_K,
+                    date_sensitive=analysis.date_sensitive,
+                )
+                timings["retrieval_ms"] += int((time.perf_counter() - t0) * 1000)
 
         if not retrieved:
             return await _save_no_answer(db, query_record, timings, total_start)
@@ -314,6 +326,30 @@ def _build_citations(
                 "relevance_score": chunk.final_score or chunk.rrf_score,
             })
     return citations
+
+
+async def _validate_filters(
+    db: AsyncSession, workspace_id: uuid.UUID, metadata_filters: dict | None,
+) -> dict | None:
+    """Drop source_type filters that don't match any documents in the workspace."""
+    if not metadata_filters or not metadata_filters.get("source_types"):
+        return metadata_filters
+
+    from sqlalchemy import text
+    result = await db.execute(
+        text("SELECT DISTINCT source_type FROM documents WHERE workspace_id = :wid AND status = 'active'"),
+        {"wid": str(workspace_id)},
+    )
+    valid_types = {row[0] for row in result.fetchall()}
+
+    requested = metadata_filters["source_types"]
+    matched = [st for st in requested if st in valid_types]
+
+    if not matched:
+        logger.info("pipeline.filters_dropped", requested=requested, valid=list(valid_types))
+        return None
+
+    return {**metadata_filters, "source_types": matched}
 
 
 async def _get_existing_chunk_ids(db: AsyncSession, chunk_ids: list[str]) -> set[str]:

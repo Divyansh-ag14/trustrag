@@ -135,8 +135,15 @@ export default function EvaluationsPage() {
     }
   };
 
-  const latestRun = runs.find((r) => r.status === "completed");
-  const previousRun = runs.filter((r) => r.status === "completed")[1];
+  const completedRuns = runs
+    .filter((r) => r.status === "completed")
+    .sort((a, b) => {
+      const aTime = a.completed_at ? new Date(a.completed_at).getTime() : new Date(a.started_at).getTime();
+      const bTime = b.completed_at ? new Date(b.completed_at).getTime() : new Date(b.started_at).getTime();
+      return bTime - aTime;
+    });
+  const latestRun = completedRuns[0];
+  const previousRun = completedRuns[1];
 
   if (loading) {
     return (
@@ -349,7 +356,7 @@ function RunRow({
             : "--"}
         </td>
         <td className="py-2.5 px-4 text-muted-foreground">
-          {new Date(run.started_at).toLocaleDateString()}
+          {new Date(run.completed_at || run.started_at).toLocaleDateString()}
         </td>
       </tr>
 

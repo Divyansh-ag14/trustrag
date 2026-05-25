@@ -59,6 +59,7 @@ async def process_query(
             search_query, workspace_id, db,
             top_k=settings.RETRIEVAL_TOP_K,
             filters=retrieval_filters,
+            date_sensitive=analysis.date_sensitive,
         )
         timings["retrieval_ms"] = int((time.perf_counter() - t0) * 1000)
 

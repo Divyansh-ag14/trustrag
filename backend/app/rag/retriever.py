@@ -151,6 +151,7 @@ def _fuse_results(
     vector_results: list[RetrievedChunk],
     bm25_results: list[RetrievedChunk],
     top_k: int,
+    date_sensitive: bool = False,
 ) -> list[RetrievedChunk]:
     chunk_map: dict[str, RetrievedChunk] = {}
 
@@ -173,6 +174,11 @@ def _fuse_results(
     for chunk in chunk_map.values():
         chunk.freshness_score = _calculate_freshness(chunk.doc_updated_at)
         chunk.retrieval_method = "hybrid"
+
+    if date_sensitive:
+        # Boost RRF score by freshness for time-sensitive queries
+        for chunk in chunk_map.values():
+            chunk.rrf_score *= (0.7 + 0.3 * chunk.freshness_score)
 
     fused = sorted(chunk_map.values(), key=lambda c: c.rrf_score, reverse=True)
     return fused[:top_k]
@@ -209,6 +215,7 @@ async def hybrid_retrieve(
     db: AsyncSession,
     top_k: int = 50,
     filters: dict | None = None,
+    date_sensitive: bool = False,
 ) -> list[RetrievedChunk]:
     logger.info("retriever.start", query=query[:100], top_k=top_k)
 
@@ -233,7 +240,7 @@ async def hybrid_retrieve(
         for chunk in fused:
             chunk.rrf_score = chunk.vector_score
     else:
-        fused = _fuse_results(vector_results, bm25_results, top_k)
+        fused = _fuse_results(vector_results, bm25_results, top_k, date_sensitive)
 
     fused = await _load_full_content(fused, db)
 

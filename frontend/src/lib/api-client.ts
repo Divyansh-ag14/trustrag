@@ -73,11 +73,14 @@ class ApiClient {
     return this.handleResponse<T>(response);
   }
 
-  async delete<T>(path: string): Promise<T> {
+  async delete<T = void>(path: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
       headers: this.getHeaders(),
     });
+    if (response.status === 204) {
+      return undefined as T;
+    }
     return this.handleResponse<T>(response);
   }
 

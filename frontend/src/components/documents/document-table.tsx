@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { FileText, RotateCw, Trash2 } from "lucide-react";
 import {
   Table,
@@ -36,6 +37,7 @@ export function DocumentTable({
   onReindex,
   onDelete,
 }: DocumentTableProps) {
+  const router = useRouter();
   if (loading) {
     return (
       <div className="space-y-2">
@@ -72,7 +74,11 @@ export function DocumentTable({
       </TableHeader>
       <TableBody>
         {documents.map((doc) => (
-          <TableRow key={doc.id} className="border-border/40">
+          <TableRow
+            key={doc.id}
+            className="border-border/40 cursor-pointer"
+            onClick={() => router.push(`/documents/${doc.id}`)}
+          >
             <TableCell className="font-medium text-sm">{doc.title}</TableCell>
             <TableCell>
               <Badge variant="outline" className="text-xs font-normal">
@@ -93,7 +99,7 @@ export function DocumentTable({
             <TableCell className="text-sm text-muted-foreground">
               {formatDate(doc.updated_at)}
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-end gap-1">
                 <Button
                   variant="ghost"

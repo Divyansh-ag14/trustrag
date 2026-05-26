@@ -16,6 +16,7 @@ from app.models.document import Document
 from app.models.ingestion_job import IngestionJob
 from app.models.user import User
 from app.schemas.document import ChunkListResponse, ChunkResponse, DocumentListResponse, DocumentResponse
+from app.utils.file_validation import validate_file_content, validate_filename
 from app.workers.ingestion_tasks import process_document_task
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -50,13 +51,22 @@ async def upload_document(
     if file.size and file.size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large")
 
+    content = await file.read()
+
+    # Validate magic bytes
+    if not validate_file_content(content, source_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File content does not match expected type: {source_type}",
+        )
+
+    safe_name = validate_filename(file.filename)
     upload_dir = Path(settings.UPLOAD_DIR) / str(user.workspace_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     file_id = uuid.uuid4()
     file_path = upload_dir / f"{file_id}{ext}"
 
-    content = await file.read()
     with open(file_path, "wb") as f:
         f.write(content)
 

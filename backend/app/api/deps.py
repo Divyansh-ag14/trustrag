@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import decode_token
+from app.utils.logging import bind_user_context
 
 security = HTTPBearer()
 
@@ -27,6 +28,8 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    bind_user_context(str(user.id), str(user.workspace_id), user.role)
     return user
 
 

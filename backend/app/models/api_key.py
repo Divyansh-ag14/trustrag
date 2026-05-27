@@ -15,7 +15,7 @@ class APIKey(UUIDMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")
     )
     key_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    key_prefix: Mapped[str] = mapped_column(String(8))
+    key_prefix: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(255))
     permissions: Mapped[list] = mapped_column(JSONB, default=lambda: ["query"])
     last_used_at: Mapped[datetime | None] = mapped_column(

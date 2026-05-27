@@ -28,6 +28,7 @@ class ChatResponse(BaseModel):
     status: str
     has_conflicts: bool = False
     follow_up_suggestions: list[str] = []
+    retrieval_trace: dict = {}
     latency_breakdown: dict = {}
     token_usage: dict = {}
     cost_usd: float | None = None

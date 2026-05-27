@@ -73,6 +73,7 @@ async def chat_query(
         status=result["status"],
         has_conflicts=result.get("has_conflicts", False),
         follow_up_suggestions=result.get("follow_up_suggestions", []),
+        retrieval_trace=result.get("retrieval_trace", {}),
         latency_breakdown=result.get("latency_breakdown", {}),
         token_usage=result.get("token_usage", {}),
         cost_usd=result.get("cost_usd"),

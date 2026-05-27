@@ -241,6 +241,15 @@ async def process_query(
                 "total_tokens": gen_result.total_tokens,
             },
             "cost_usd": float(cost),
+            "retrieval_trace": {
+                "has_conflicts": context_result.has_conflicts,
+                "stale_sources": context_result.stale_sources,
+                "query_type": analysis.query_type,
+                "intent": analysis.intent,
+                "rewritten_query": analysis.rewritten_query,
+                "hallucination_action": hallucination_result.action,
+                "unsupported_citations": citation_validation.unsupported_citations,
+            },
         }
 
     except Exception as e:

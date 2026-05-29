@@ -20,3 +20,11 @@ celery_app.conf.update(
 )
 
 celery_app.autodiscover_tasks(["app.workers"])
+
+# Beat schedule — periodic connector sync check
+celery_app.conf.beat_schedule = {
+    "sync-all-connectors": {
+        "task": "app.workers.connector_tasks.sync_all_connectors_task",
+        "schedule": 3600.0,  # every hour
+    },
+}

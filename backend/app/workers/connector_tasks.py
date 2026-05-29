@@ -15,6 +15,7 @@ from app.models.connector import Connector
 from app.models.document import Document
 from app.models.ingestion_job import IngestionJob
 from app.ingestion.processor import process_document_from_text
+from app.ingestion.image_processor import process_images
 from app.workers.celery_app import celery_app
 
 logger = structlog.get_logger()
@@ -138,6 +139,21 @@ async def _sync_connector(connector_id: str) -> dict:
                 # Process document through existing pipeline
                 try:
                     await process_document_from_text(db, doc.id, fetched.content)
+
+                    # Process images if connector provided any
+                    if fetched.images:
+                        image_chunks = await process_images(
+                            db=db,
+                            document_id=doc.id,
+                            images=fetched.images,
+                            document_title=fetched.title,
+                        )
+                        logger.info(
+                            "connector.images_processed",
+                            document_id=str(doc.id),
+                            image_chunks=image_chunks,
+                        )
+
                     await db.commit()
                 except Exception as e:
                     logger.error(

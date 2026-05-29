@@ -39,6 +39,8 @@ class Settings(BaseSettings):
 
     RATE_LIMIT_PER_MINUTE: int = 60
 
+    CONNECTOR_ENCRYPTION_KEY: str = ""  # Fernet key for encrypting connector credentials
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

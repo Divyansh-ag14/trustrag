@@ -1,4 +1,6 @@
 import hashlib
+import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 
@@ -140,3 +142,29 @@ async def process_document(
             job.completed_at = datetime.now(timezone.utc)
         await db.flush()
         raise
+
+
+async def process_document_from_text(
+    db: AsyncSession,
+    document_id: uuid.UUID,
+    content: str,
+    file_extension: str = ".md",
+) -> None:
+    """Convenience wrapper: write text to a temp file and process it.
+
+    Used by connectors that fetch content via API rather than file upload.
+    """
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=file_extension,
+        delete=False,
+        encoding="utf-8",
+    ) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        await process_document(db, document_id, tmp_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)

@@ -36,10 +36,11 @@ def rerank(
         return []
 
     w = weights or {
-        "vector": 0.35,
-        "bm25": 0.15,
-        "rerank": 0.40,
+        "vector": 0.30,
+        "bm25": 0.12,
+        "rerank": 0.35,
         "freshness": 0.10,
+        "trust": 0.13,
     }
 
     try:
@@ -71,6 +72,7 @@ def rerank(
     bm25_scores = _normalize([c.bm25_score for c in chunks])
     rerank_scores_list = [c.rerank_score for c in chunks]
     freshness_scores = [c.freshness_score for c in chunks]
+    trust_scores = [c.trust_score for c in chunks]
 
     for i, chunk in enumerate(chunks):
         chunk.final_score = (
@@ -78,6 +80,7 @@ def rerank(
             + w["bm25"] * bm25_scores[i]
             + w["rerank"] * rerank_scores_list[i]
             + w["freshness"] * freshness_scores[i]
+            + w.get("trust", 0.0) * trust_scores[i]
         )
 
     ranked = sorted(chunks, key=lambda c: c.final_score, reverse=True)

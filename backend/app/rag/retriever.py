@@ -29,11 +29,25 @@ class RetrievedChunk:
     freshness_score: float = 1.0
     doc_updated_at: datetime | None = None
     rerank_score: float = 0.0
+    trust_score: float = 0.7
     final_score: float = 0.0
     retrieval_method: str = "hybrid"
 
 
 RRF_K = 60
+
+DEFAULT_TRUST_WEIGHTS = {
+    "pdf": 0.85,
+    "markdown": 0.85,
+    "text": 0.70,
+    "html": 0.75,
+    "csv": 0.65,
+    "faq": 0.90,
+    "slack_export": 0.50,
+    "notion": 0.80,
+    "github": 0.80,
+    "web": 0.60,
+}
 
 
 def _rrf_score(rank: int) -> float:
@@ -173,6 +187,7 @@ def _fuse_results(
 
     for chunk in chunk_map.values():
         chunk.freshness_score = _calculate_freshness(chunk.doc_updated_at)
+        chunk.trust_score = DEFAULT_TRUST_WEIGHTS.get(chunk.source_type, 0.7)
         chunk.retrieval_method = "hybrid"
 
     if date_sensitive:

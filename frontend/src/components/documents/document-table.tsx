@@ -1,7 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FileText, RotateCw, Trash2 } from "lucide-react";
+import {
+  FileText,
+  RotateCw,
+  Trash2,
+  Globe,
+  Github,
+  StickyNote,
+  FileCode,
+  FileSpreadsheet,
+  HelpCircle,
+  MessageSquare,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -15,6 +26,19 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SOURCE_TYPE_LABELS, STATUS_COLORS } from "@/lib/constants";
 import type { Document } from "@/types/api";
+
+const SOURCE_TYPE_ICONS: Record<string, typeof FileText> = {
+  pdf: FileText,
+  markdown: FileCode,
+  text: FileText,
+  html: Globe,
+  csv: FileSpreadsheet,
+  faq: HelpCircle,
+  slack_export: MessageSquare,
+  notion: StickyNote,
+  github: Github,
+  web: Globe,
+};
 
 interface DocumentTableProps {
   documents: Document[];
@@ -81,9 +105,15 @@ export function DocumentTable({
           >
             <TableCell className="font-medium text-sm">{doc.title}</TableCell>
             <TableCell>
-              <Badge variant="outline" className="text-xs font-normal">
-                {SOURCE_TYPE_LABELS[doc.source_type] || doc.source_type}
-              </Badge>
+              {(() => {
+                const Icon = SOURCE_TYPE_ICONS[doc.source_type] || FileText;
+                return (
+                  <Badge variant="outline" className="text-xs font-normal gap-1">
+                    <Icon className="h-3 w-3" />
+                    {SOURCE_TYPE_LABELS[doc.source_type] || doc.source_type}
+                  </Badge>
+                );
+              })()}
             </TableCell>
             <TableCell>
               <Badge

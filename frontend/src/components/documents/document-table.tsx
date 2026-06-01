@@ -6,7 +6,7 @@ import {
   RotateCw,
   Trash2,
   Globe,
-  Github,
+  GitBranch,
   StickyNote,
   FileCode,
   FileSpreadsheet,
@@ -36,7 +36,7 @@ const SOURCE_TYPE_ICONS: Record<string, typeof FileText> = {
   faq: HelpCircle,
   slack_export: MessageSquare,
   notion: StickyNote,
-  github: Github,
+  github: GitBranch,
   web: Globe,
 };
 

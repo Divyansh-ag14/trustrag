@@ -8,7 +8,7 @@ import {
   Loader2,
   Plug,
   Globe,
-  Github,
+  GitBranch,
   FileText,
   AlertCircle,
 } from "lucide-react";
@@ -43,7 +43,7 @@ interface ConnectorListProps {
 
 const TYPE_ICONS: Record<string, typeof Globe> = {
   notion: FileText,
-  github: Github,
+  github: GitBranch,
   web_scraper: Globe,
 };
 

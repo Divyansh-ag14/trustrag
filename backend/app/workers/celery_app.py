@@ -6,6 +6,10 @@ celery_app = Celery(
     "trustrag",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
+    include=[
+        "app.workers.ingestion_tasks",
+        "app.workers.connector_tasks",
+    ],
 )
 
 celery_app.conf.update(

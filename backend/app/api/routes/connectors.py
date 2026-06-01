@@ -83,6 +83,27 @@ async def create_connector(
     return _connector_to_response(connector)
 
 
+@router.post("/test", response_model=ConnectorTestResponse)
+async def test_connector_config(
+    body: ConnectorCreate,
+    user: User = Depends(require_role("admin")),
+):
+    """Test credentials/config before creating a connector (nothing is persisted)."""
+    transient = Connector(
+        workspace_id=user.workspace_id,
+        name=body.name,
+        connector_type=body.connector_type.value,
+        config=body.config,
+    )
+
+    from app.workers.connector_tasks import _get_connector_class
+    connector_cls = _get_connector_class(body.connector_type.value)
+    instance = connector_cls(transient, body.credentials)
+
+    success, message = await instance.test_connection()
+    return {"success": success, "message": message}
+
+
 @router.get("/{connector_id}", response_model=ConnectorResponse)
 async def get_connector(
     connector_id: uuid.UUID,

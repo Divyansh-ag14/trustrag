@@ -151,6 +151,30 @@ export interface FeedbackStats {
   unreviewed: number;
 }
 
+export interface Connector {
+  id: string;
+  name: string;
+  connector_type: "notion" | "github" | "web_scraper";
+  config: Record<string, unknown>;
+  sync_enabled: boolean;
+  sync_interval_hours: number;
+  status: "active" | "syncing" | "error" | "disabled";
+  last_synced_at: string | null;
+  last_sync_error: string | null;
+  documents_synced: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConnectorCreate {
+  name: string;
+  connector_type: "notion" | "github" | "web_scraper";
+  credentials: Record<string, string>;
+  config: Record<string, unknown>;
+  sync_enabled?: boolean;
+  sync_interval_hours?: number;
+}
+
 export interface ApiError {
   detail: string;
 }

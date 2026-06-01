@@ -13,6 +13,7 @@ import {
   Shield,
   Eye,
   Pencil,
+  Plug,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,9 @@ import {
 } from "@/components/ui/dialog";
 import { useAuthStore } from "@/stores/auth-store";
 import { api } from "@/lib/api-client";
+import { ConnectorList } from "@/components/connectors/connector-list";
+import { ConnectorDialog } from "@/components/connectors/connector-dialog";
+import type { Connector, ConnectorCreate } from "@/types/api";
 
 interface WorkspaceInfo {
   id: string;
@@ -77,6 +81,13 @@ export default function SettingsPage() {
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Connectors
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [connectorsLoading, setConnectorsLoading] = useState(true);
+  const [connectorDialogOpen, setConnectorDialogOpen] = useState(false);
+  const [editingConnector, setEditingConnector] = useState<Connector | null>(null);
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+
   // Dialogs
   const [inviteOpen, setInviteOpen] = useState(false);
   const [createKeyOpen, setCreateKeyOpen] = useState(false);
@@ -110,9 +121,21 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchConnectors = useCallback(async () => {
+    try {
+      const data = await api.get<Connector[]>("/connectors");
+      setConnectors(data);
+    } catch {
+      // silent
+    } finally {
+      setConnectorsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAll();
-  }, [fetchAll]);
+    fetchConnectors();
+  }, [fetchAll, fetchConnectors]);
 
   const saveWorkspace = async () => {
     if (!wsName.trim()) return;
@@ -199,6 +222,54 @@ export default function SettingsPage() {
     }
   };
 
+  const handleCreateConnector = async (data: ConnectorCreate) => {
+    await api.post("/connectors", data);
+    fetchConnectors();
+  };
+
+  const handleEditConnector = async (data: ConnectorCreate) => {
+    if (!editingConnector) return;
+    await api.patch(`/connectors/${editingConnector.id}`, data);
+    setEditingConnector(null);
+    fetchConnectors();
+  };
+
+  const handleDeleteConnector = async (id: string) => {
+    try {
+      await api.delete(`/connectors/${id}`);
+      fetchConnectors();
+    } catch {
+      // silent
+    }
+  };
+
+  const handleSyncConnector = async (id: string) => {
+    setSyncingIds((prev) => new Set(prev).add(id));
+    try {
+      await api.post(`/connectors/${id}/sync`);
+    } catch {
+      // silent
+    } finally {
+      setTimeout(() => {
+        setSyncingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        fetchConnectors();
+      }, 3000);
+    }
+  };
+
+  const handleTestConnector = async (data: ConnectorCreate): Promise<boolean> => {
+    try {
+      const result = await api.post<{ success: boolean }>("/connectors/test", data);
+      return result.success;
+    } catch {
+      return false;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -225,6 +296,10 @@ export default function SettingsPage() {
           <TabsTrigger value="users" className="text-xs gap-1.5">
             <Users className="h-3 w-3" />
             Users
+          </TabsTrigger>
+          <TabsTrigger value="connectors" className="text-xs gap-1.5">
+            <Plug className="h-3 w-3" />
+            Connectors
           </TabsTrigger>
           <TabsTrigger value="api-keys" className="text-xs gap-1.5">
             <Key className="h-3 w-3" />
@@ -378,6 +453,41 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        {/* ── Connectors Tab ── */}
+        <TabsContent value="connectors" className="mt-4">
+          <Card className="border-border/40 bg-card/50">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-sm">
+                Data connectors ({connectors.length})
+              </CardTitle>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  setEditingConnector(null);
+                  setConnectorDialogOpen(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add connector
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <ConnectorList
+                connectors={connectors}
+                loading={connectorsLoading}
+                onSync={handleSyncConnector}
+                onEdit={(conn) => {
+                  setEditingConnector(conn);
+                  setConnectorDialogOpen(true);
+                }}
+                onDelete={handleDeleteConnector}
+                syncingIds={syncingIds}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* ── API Keys Tab ── */}
         <TabsContent value="api-keys" className="mt-4">
           <Card className="border-border/40 bg-card/50">
@@ -519,6 +629,18 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Connector Dialog */}
+      <ConnectorDialog
+        open={connectorDialogOpen}
+        onOpenChange={(open) => {
+          setConnectorDialogOpen(open);
+          if (!open) setEditingConnector(null);
+        }}
+        onSubmit={editingConnector ? handleEditConnector : handleCreateConnector}
+        onTest={!editingConnector ? handleTestConnector : undefined}
+        editConnector={editingConnector}
+      />
 
       {/* Create API Key Dialog */}
       <Dialog

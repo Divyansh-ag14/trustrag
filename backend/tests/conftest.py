@@ -14,8 +14,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.config import settings
+
+# Increase rate limit for tests before app is imported
+settings.RATE_LIMIT_PER_MINUTE = 100000
+
 from app.database import get_db
 from app.main import app
+
 from app.models.workspace import Workspace
 from app.models.user import User
 from app.models.document import Document

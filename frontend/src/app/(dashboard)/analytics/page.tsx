@@ -320,7 +320,7 @@ export default function AnalyticsPage() {
                       borderRadius: "6px",
                       fontSize: 12,
                     }}
-                    formatter={(v: number) => `${v}%`}
+                    formatter={(v) => `${v}%`}
                   />
                   <Legend
                     iconSize={8}
@@ -380,7 +380,7 @@ export default function AnalyticsPage() {
                       borderRadius: "6px",
                       fontSize: 12,
                     }}
-                    formatter={(v: number) => formatCost(v)}
+                    formatter={(v) => formatCost(v as number)}
                   />
                   <Bar
                     dataKey="total_cost"
@@ -433,7 +433,7 @@ export default function AnalyticsPage() {
                       borderRadius: "6px",
                       fontSize: 12,
                     }}
-                    formatter={(v: number) => `${v}ms`}
+                    formatter={(v) => `${v}ms`}
                   />
                   <Bar dataKey="ms" radius={[0, 4, 4, 0]} name="Avg ms">
                     {stageData.map((entry, index) => (

@@ -129,7 +129,10 @@ async def process_query(
         elif hallucination_result.action == "disclaimer":
             if not answer.endswith("\n"):
                 answer += "\n"
-            answer += "\nNote: Some statements in this answer may not be fully supported by the available sources."
+            if hallucination_result.verification_failed:
+                answer += "\nNote: This answer could not be automatically verified against the sources. Please double-check important details."
+            else:
+                answer += "\nNote: Some statements in this answer may not be fully supported by the available sources."
 
         # Add staleness warning
         if context_result.stale_sources:

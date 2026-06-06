@@ -43,12 +43,13 @@ class ClaimVerdict:
 
 @dataclass
 class HallucinationResult:
-    faithfulness_score: float = 1.0
-    hallucination_score: float = 0.0
+    faithfulness_score: float | None = 1.0
+    hallucination_score: float | None = 0.0
     claim_verdicts: list[ClaimVerdict] = field(default_factory=list)
     unsupported_claims: list[str] = field(default_factory=list)
     contradicted_claims: list[str] = field(default_factory=list)
     action: str = "pass"  # pass, disclaimer, block
+    verification_failed: bool = False
     prompt_tokens: int = 0
     completion_tokens: int = 0
 
@@ -87,9 +88,9 @@ def check_hallucination(
             action="block",
         )
 
-    client = _get_client()
-
     try:
+        client = _get_client()
+
         user_msg = json.dumps({
             "context": context[:3000],
             "claims": claims,
@@ -167,5 +168,13 @@ def check_hallucination(
         )
 
     except Exception as e:
+        # Fail toward caution, NOT open. If the verifier itself breaks we must
+        # not ship an unverified answer as if it passed. Mark scores unknown
+        # (None → excluded from quality averages) and surface a disclaimer.
         logger.warning("hallucination_checker.failed", error=str(e))
-        return HallucinationResult()
+        return HallucinationResult(
+            faithfulness_score=None,
+            hallucination_score=None,
+            action="disclaimer",
+            verification_failed=True,
+        )

@@ -19,16 +19,19 @@ def _get_client() -> OpenAI:
     return _client
 
 
-HALLUCINATION_CHECK_SYSTEM = """You are a faithfulness verification engine. Given a context and a list of claims extracted from an AI-generated answer, determine if each claim is supported by the context.
+HALLUCINATION_CHECK_SYSTEM = """You are a faithfulness verification engine. Given a context and a list of sentences extracted from an AI-generated answer, classify each one.
 
-For each claim, classify it as:
-- "entailed": the context directly supports this claim
-- "neutral": the context neither supports nor contradicts this claim (the claim may be true but is not verifiable from the context)
-- "contradicted": the context contradicts this claim
+For each sentence, classify it as:
+- "entailed": it asserts a fact about the subject and the context directly supports it
+- "neutral": it asserts a fact about the subject but the context neither supports nor contradicts it (it may be true but is not verifiable from the context)
+- "contradicted": it asserts a fact about the subject and the context contradicts it
+- "not_a_claim": it makes NO verifiable assertion about the subject — pure framing, conversational filler, a transition, a pointer to sources, or meta-commentary about the answer itself. Examples: "Here's what I found.", "According to the documentation:", "I hope this helps.", "Let me explain.", a question, a heading.
+
+CRITICAL: Use "not_a_claim" ONLY for non-assertive filler. ANY sentence stating a fact about the subject — even if that fact is wrong or unverifiable — is a claim and must be "entailed", "neutral", or "contradicted". When unsure whether something asserts a fact, treat it as a claim, not as "not_a_claim".
 
 Return a JSON array of objects with:
-- "claim": the claim text
-- "verdict": one of "entailed", "neutral", "contradicted"
+- "claim": the sentence text
+- "verdict": one of "entailed", "neutral", "contradicted", "not_a_claim"
 - "reason": brief explanation (max 20 words)
 
 Return ONLY valid JSON, no markdown fences."""
@@ -133,6 +136,7 @@ def check_hallucination(
 
         verdicts = []
         entailed_count = 0
+        scored_count = 0  # claims that actually assert a fact (excludes not_a_claim)
         unsupported = []
         contradicted = []
 
@@ -144,6 +148,12 @@ def check_hallucination(
             )
             verdicts.append(verdict)
 
+            if verdict.verdict == "not_a_claim":
+                # Pure framing/filler — not a factual assertion, so it must not
+                # count for or against faithfulness.
+                continue
+
+            scored_count += 1
             if verdict.verdict == "entailed":
                 entailed_count += 1
             elif verdict.verdict == "neutral":
@@ -151,8 +161,12 @@ def check_hallucination(
             elif verdict.verdict == "contradicted":
                 contradicted.append(verdict.claim)
 
-        total = len(verdicts) if verdicts else 1
-        faithfulness = entailed_count / total
+        # If the answer was entirely non-assertive (no real claims), there is
+        # nothing to hallucinate — treat as faithful.
+        if scored_count == 0:
+            faithfulness = 1.0
+        else:
+            faithfulness = entailed_count / scored_count
         hallucination = 1.0 - faithfulness
 
         if hallucination <= 0.1:
@@ -164,7 +178,8 @@ def check_hallucination(
 
         logger.info(
             "hallucination_checker.complete",
-            total_claims=total,
+            scored_claims=scored_count,
+            not_a_claim=len(verdicts) - scored_count,
             entailed=entailed_count,
             unsupported=len(unsupported),
             contradicted=len(contradicted),

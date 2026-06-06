@@ -41,6 +41,12 @@ class ClaimVerdict:
     reason: str = ""
 
 
+# Max context chars sent to the NLI check. The built context is token-budgeted
+# (~4000 tokens ≈ 16000 chars); truncating much below that mislabels claims
+# supported by later context as "neutral" → false hallucination flags.
+MAX_CONTEXT_CHARS = 16000
+
+
 @dataclass
 class HallucinationResult:
     faithfulness_score: float | None = 1.0
@@ -55,7 +61,12 @@ class HallucinationResult:
 
 
 def _split_into_claims(answer: str) -> list[str]:
-    """Split answer into atomic claims at sentence level."""
+    """Split answer into atomic claims.
+
+    Splits on line boundaries first (so bulleted/numbered list items become
+    separate claims instead of one giant run-on), then on sentence boundaries
+    within each line.
+    """
     clean = re.sub(r'\[\d+\]', '', answer)
     clean = re.sub(
         r"^I'm not confident in a complete answer, but here's what I found:\s*",
@@ -63,12 +74,17 @@ def _split_into_claims(answer: str) -> list[str]:
         clean,
     )
 
-    sentences = re.split(r'(?<=[.!?])\s+', clean.strip())
     claims = []
-    for s in sentences:
-        s = s.strip()
-        if len(s) > 10 and not s.startswith("Note:"):
-            claims.append(s)
+    for line in clean.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Strip leading bullet/numbering markers ("- ", "* ", "1. ", "2) ")
+        line = re.sub(r'^([-*•]|\d+[.)])\s+', '', line).strip()
+        for s in re.split(r'(?<=[.!?])\s+', line):
+            s = s.strip()
+            if len(s) > 10 and not s.startswith("Note:"):
+                claims.append(s)
 
     return claims
 
@@ -92,7 +108,7 @@ def check_hallucination(
         client = _get_client()
 
         user_msg = json.dumps({
-            "context": context[:3000],
+            "context": context[:MAX_CONTEXT_CHARS],
             "claims": claims,
         })
 

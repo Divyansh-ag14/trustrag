@@ -261,12 +261,17 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTestConnector = async (data: ConnectorCreate): Promise<boolean> => {
+  const handleTestConnector = async (
+    data: ConnectorCreate,
+  ): Promise<{ success: boolean; message: string }> => {
     try {
-      const result = await api.post<{ success: boolean }>("/connectors/test", data);
-      return result.success;
+      const result = await api.post<{ success: boolean; message: string }>(
+        "/connectors/test",
+        data,
+      );
+      return { success: result.success, message: result.message };
     } catch {
-      return false;
+      return { success: false, message: "Request failed — could not reach the server" };
     }
   };
 

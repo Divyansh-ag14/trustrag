@@ -1,5 +1,7 @@
 """Notion connector — fetches pages via Notion API and converts blocks to markdown."""
 
+import re
+
 import structlog
 import httpx
 
@@ -10,13 +12,35 @@ logger = structlog.get_logger()
 NOTION_API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
+_DASHED_UUID = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_HEX32 = re.compile(r"[0-9a-fA-F]{32}")
+
+
+def _normalize_notion_id(raw: str) -> str:
+    """Return the 32-char id from a raw id OR a full Notion URL.
+
+    Users routinely paste the whole page/database URL (it ends with the id,
+    sometimes dash-formatted as a UUID), so extract the id instead of failing.
+    """
+    raw = (raw or "").strip()
+    m = _DASHED_UUID.search(raw)
+    if m:
+        return m.group(0)
+    m = _HEX32.search(raw)
+    if m:
+        return m.group(0)
+    return raw
+
 
 class NotionConnector(BaseConnector):
     """Fetch pages from a Notion workspace using an integration token."""
 
     def _headers(self) -> dict:
+        token = (self.credentials or {}).get("token", "").strip()
         return {
-            "Authorization": f"Bearer {self.credentials['token']}",
+            "Authorization": f"Bearer {token}",
             "Notion-Version": NOTION_VERSION,
             "Content-Type": "application/json",
         }
@@ -34,8 +58,11 @@ class NotionConnector(BaseConnector):
             return False, f"Connection failed: {str(e)}"
 
     async def fetch_documents(self) -> list[FetchedDocument]:
-        page_ids = self.config.get("page_ids", [])
+        # Accept raw ids or full pasted URLs for both pages and database.
+        page_ids = [_normalize_notion_id(p) for p in self.config.get("page_ids", [])]
         database_id = self.config.get("database_id")
+        if database_id:
+            database_id = _normalize_notion_id(database_id)
         documents = []
 
         async with httpx.AsyncClient(timeout=30) as client:

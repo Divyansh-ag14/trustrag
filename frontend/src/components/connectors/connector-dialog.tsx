@@ -19,7 +19,7 @@ interface ConnectorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: ConnectorCreate) => Promise<void>;
-  onTest?: (data: ConnectorCreate) => Promise<boolean>;
+  onTest?: (data: ConnectorCreate) => Promise<{ success: boolean; message: string }>;
   editConnector?: Connector | null;
 }
 
@@ -43,7 +43,7 @@ export function ConnectorDialog({
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<boolean | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Credentials
   const [apiToken, setApiToken] = useState("");
@@ -121,7 +121,7 @@ export function ConnectorDialog({
     const config: Record<string, unknown> = {};
 
     if (connectorType === "notion") {
-      credentials.token = apiToken;
+      credentials.token = apiToken.trim();
       if (notionPageIds.trim()) {
         config.page_ids = notionPageIds.split(",").map((s) => s.trim()).filter(Boolean);
       }
@@ -129,9 +129,9 @@ export function ConnectorDialog({
         config.database_id = notionDatabaseId.trim();
       }
     } else if (connectorType === "github") {
-      credentials.token = apiToken;
-      config.owner = githubOwner;
-      config.repo = githubRepo;
+      credentials.token = apiToken.trim();
+      config.owner = githubOwner.trim();
+      config.repo = githubRepo.trim();
       if (githubPaths.trim()) {
         config.paths = githubPaths.split(",").map((s) => s.trim()).filter(Boolean);
       }
@@ -166,7 +166,7 @@ export function ConnectorDialog({
       const result = await onTest(buildPayload());
       setTestResult(result);
     } catch {
-      setTestResult(false);
+      setTestResult({ success: false, message: "Test request failed" });
     } finally {
       setTesting(false);
     }
@@ -390,8 +390,8 @@ export function ConnectorDialog({
 
             {/* Test result */}
             {testResult !== null && (
-              <div className={`text-xs px-3 py-2 rounded-md ${testResult ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                {testResult ? "Connection successful" : "Connection failed — check credentials"}
+              <div className={`text-xs px-3 py-2 rounded-md ${testResult.success ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                {testResult.message || (testResult.success ? "Connection successful" : "Connection failed")}
               </div>
             )}
           </div>

@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
 from app.config import settings
+from app.services.auth_service import decode_token
 
 logger = structlog.get_logger()
 
@@ -76,10 +77,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):
-            # Use token prefix as key (avoids storing full tokens)
-            return f"token:{auth[7:15]}"
+            # Key on the authenticated user id (JWT "sub"), not the token
+            # prefix. Every HS256 token shares the same header prefix, so
+            # keying on the prefix collapses all users into one bucket.
+            payload = decode_token(auth[7:])
+            user_id = payload.get("sub")
+            if user_id:
+                return f"user:{user_id}"
+            # Invalid/expired token → fall through to IP-based limiting; the
+            # auth layer will reject the request anyway.
 
-        # Fall back to IP
+        # Fall back to IP for unauthenticated/invalid-token requests
         client = request.client
         if client:
             return f"ip:{client.host}"

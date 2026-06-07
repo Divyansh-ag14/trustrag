@@ -16,19 +16,25 @@ class GitHubConnector(BaseConnector):
     """Fetch docs, wikis, and issues from a GitHub repository."""
 
     def _headers(self) -> dict:
-        return {
-            "Authorization": f"Bearer {self.credentials['token']}",
+        headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        # Token is optional: public repos are readable unauthenticated (at a
+        # lower 60 req/hr rate limit). Only send auth when a token is provided.
+        token = (self.credentials or {}).get("token", "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
 
     @property
     def _owner(self) -> str:
-        return self.config.get("owner", "")
+        # Strip stray whitespace/tabs that would corrupt the request URL
+        return self.config.get("owner", "").strip()
 
     @property
     def _repo(self) -> str:
-        return self.config.get("repo", "")
+        return self.config.get("repo", "").strip()
 
     async def test_connection(self) -> tuple[bool, str]:
         try:
@@ -140,25 +146,34 @@ class GitHubConnector(BaseConnector):
         )
 
     async def _fetch_issues(self, client: httpx.AsyncClient, max_issues: int = 50) -> list[FetchedDocument]:
-        """Fetch open issues with their comments."""
+        """Fetch open issues with their comments.
+
+        Uses the Search API with `type:issue` so pull requests are excluded
+        server-side. The plain `/issues` endpoint mixes in PRs, and on
+        PR-heavy repos (e.g. fastapi) entire pages are PRs, yielding almost
+        no real issues.
+        """
         documents = []
         page = 1
+        per_page = 30
+        query = f"repo:{self._owner}/{self._repo} type:issue state:open"
 
         while len(documents) < max_issues:
             resp = await client.get(
-                f"{GITHUB_API}/repos/{self._owner}/{self._repo}/issues",
+                f"{GITHUB_API}/search/issues",
                 headers=self._headers(),
-                params={"state": "open", "per_page": 30, "page": page, "sort": "updated"},
+                params={"q": query, "per_page": per_page, "page": page, "sort": "updated"},
             )
             if resp.status_code != 200:
+                logger.warning("github.issues_fetch_failed", status=resp.status_code, page=page)
                 break
 
-            issues = resp.json()
-            if not issues:
+            items = resp.json().get("items", [])
+            if not items:
                 break
 
-            for issue in issues:
-                # Skip pull requests (GitHub includes them in issues API)
+            for issue in items:
+                # Search with type:issue already excludes PRs; double-check.
                 if issue.get("pull_request"):
                     continue
 
@@ -199,6 +214,9 @@ class GitHubConnector(BaseConnector):
                 if len(documents) >= max_issues:
                     break
 
+            # Last page of results — stop paginating.
+            if len(items) < per_page:
+                break
             page += 1
 
         return documents

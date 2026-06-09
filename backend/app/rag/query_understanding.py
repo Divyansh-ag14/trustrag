@@ -58,6 +58,8 @@ class QueryAnalysis:
     ambiguity: str = "low"
     metadata_filters: dict = field(default_factory=dict)
     raw_query: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 def analyze_query(
@@ -95,6 +97,7 @@ def analyze_query(
             content = content[:-3]
 
         parsed = json.loads(content.strip())
+        usage = response.usage
 
         analysis = QueryAnalysis(
             rewritten_query=parsed.get("rewritten_query", query),
@@ -104,6 +107,8 @@ def analyze_query(
             ambiguity=parsed.get("ambiguity", "low"),
             metadata_filters=parsed.get("metadata_filters", {}),
             raw_query=query,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
         )
 
         logger.info(

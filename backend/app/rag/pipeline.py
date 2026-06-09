@@ -147,7 +147,9 @@ async def process_query(
             citation_validation.completion_tokens + hallucination_result.completion_tokens,
             model="gpt-4o-mini",
         )
-        qu_cost = calculate_llm_cost(0, 0, model="gpt-4o-mini")
+        qu_cost = calculate_llm_cost(
+            analysis.prompt_tokens, analysis.completion_tokens, model="gpt-4o-mini"
+        )
         cost = _calculate_total_cost(query_tokens, len(retrieved), gen_result) + validation_cost + qu_cost
 
         citations = _build_citations(gen_result, context_result.chunks_used)

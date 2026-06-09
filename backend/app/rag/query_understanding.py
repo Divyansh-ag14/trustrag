@@ -37,7 +37,12 @@ Analyze the user's query and return a JSON object with:
 5. "ambiguity": "low", "medium", or "high"
 
 6. "metadata_filters": {{
-     "source_types": [],  // e.g. ["pdf", "markdown", "faq", "release_note"] if query targets specific doc types
+     "source_types": [],  // LEAVE EMPTY unless the user EXPLICITLY names a source/type to restrict to.
+                          // Valid values: "pdf", "markdown", "text", "html", "csv", "faq",
+                          // "slack_export", "release_note", "notion", "github", "web".
+                          // Only set this if the query says things like "in the PDFs",
+                          // "from Slack", "in our Notion", "the GitHub issues". For a general
+                          // question, ALWAYS return [] — never guess a list of types.
      "date_range": {{}}   // e.g. {{"after": "2025-01-01"}} if query implies a time range
    }}
 

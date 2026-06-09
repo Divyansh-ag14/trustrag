@@ -51,7 +51,9 @@ async def process_query(
         query_record.intent = analysis.intent
         query_record.metadata_filters = analysis.metadata_filters
 
-        retrieval_filters = await _validate_filters(db, workspace_id, analysis.metadata_filters)
+        retrieval_filters = await _validate_filters(
+            db, workspace_id, analysis.metadata_filters, query_text=query
+        )
 
         # Stage 2: Hybrid retrieval
         t0 = time.perf_counter()
@@ -340,12 +342,46 @@ def _build_citations(
     return citations
 
 
+# Keywords that signal the user explicitly wants to restrict to a source type.
+_SOURCE_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "pdf": ("pdf",),
+    "markdown": ("markdown",),
+    "text": ("text file", "plain text"),
+    "html": ("html", "web page", "webpage"),
+    "csv": ("csv", "spreadsheet", "ticket", "tickets"),
+    "faq": ("faq", "frequently asked"),
+    "slack_export": ("slack",),
+    "release_note": ("release note", "release notes", "changelog"),
+    "notion": ("notion",),
+    "github": ("github", "repo", "repository", "issue", "pull request"),
+    "web": ("website", "web page", "scraped", "crawl"),
+}
+
+
 async def _validate_filters(
     db: AsyncSession, workspace_id: uuid.UUID, metadata_filters: dict | None,
+    query_text: str = "",
 ) -> dict | None:
-    """Drop source_type filters that don't match any documents in the workspace."""
+    """Validate the source_type filter from query understanding.
+
+    Two guards:
+    1. Only honor the filter if the user actually referenced a source/type in
+       the query. Query understanding tends to emit this filter spuriously
+       (listing the common sample-data types), which silently excludes
+       connector-sourced docs (notion/github/web) and tanks recall.
+    2. Drop requested types that don't exist in the workspace.
+    """
     if not metadata_filters or not metadata_filters.get("source_types"):
         return metadata_filters
+
+    requested = metadata_filters["source_types"]
+    q = (query_text or "").lower()
+    referenced = any(
+        kw in q for st in requested for kw in _SOURCE_TYPE_KEYWORDS.get(st, (st,))
+    )
+    if not referenced:
+        logger.info("pipeline.source_filter_ignored", requested=requested)
+        return {k: v for k, v in metadata_filters.items() if k != "source_types"}
 
     from sqlalchemy import text
     result = await db.execute(
@@ -354,7 +390,6 @@ async def _validate_filters(
     )
     valid_types = {row[0] for row in result.fetchall()}
 
-    requested = metadata_filters["source_types"]
     matched = [st for st in requested if st in valid_types]
 
     if not matched:

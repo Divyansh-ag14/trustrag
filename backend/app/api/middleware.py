@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
 from app.config import settings
+from app.database import get_redis
 from app.services.auth_service import decode_token
 
 logger = structlog.get_logger()
@@ -58,17 +59,19 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple in-memory sliding window rate limiter.
+    """Redis-backed sliding-window rate limiter.
 
-    In production, replace with Redis-based limiter for
-    multi-process deployments.
+    Uses a per-key Redis sorted set so the limit is shared across all worker
+    processes and instances (an in-memory limiter would give each process its
+    own bucket = N_workers × the limit). Fails open if Redis is unavailable so
+    the API stays up even if the limiter's backing store is down.
     """
 
     def __init__(self, app, max_requests: int = 60, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._requests: dict[str, list[float]] = {}
+        self._redis = get_redis()
 
     def _get_client_key(self, request: Request) -> str | None:
         # Only rate-limit API endpoints
@@ -100,24 +103,36 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         now = time.time()
         window_start = now - self.window_seconds
+        redis_key = f"ratelimit:{key}"
 
-        # Clean old entries and add current
-        timestamps = self._requests.get(key, [])
-        timestamps = [t for t in timestamps if t > window_start]
-        timestamps.append(now)
-        self._requests[key] = timestamps
+        try:
+            # Sliding window via sorted set: drop old entries, add this request,
+            # count what's left in the window — all atomically in one pipeline.
+            pipe = self._redis.pipeline()
+            pipe.zremrangebyscore(redis_key, 0, window_start)
+            pipe.zadd(redis_key, {f"{now}:{uuid.uuid4().hex}": now})
+            pipe.zcard(redis_key)
+            pipe.expire(redis_key, self.window_seconds)
+            results = await pipe.execute()
+            count = results[2]
+        except Exception as e:
+            # Fail open: never take down the API because the limiter store is down.
+            logger.warning("rate_limit.redis_unavailable", error=str(e))
+            return await call_next(request)
 
-        if len(timestamps) > self.max_requests:
-            retry_after = int(self.window_seconds - (now - timestamps[0]))
-            logger.warning(
-                "rate_limit.exceeded",
-                client_key=key[:20],
-                count=len(timestamps),
-            )
+        if count > self.max_requests:
+            retry_after = self.window_seconds
+            try:
+                oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
+                if oldest:
+                    retry_after = max(1, int(self.window_seconds - (now - oldest[0][1])))
+            except Exception:
+                pass
+            logger.warning("rate_limit.exceeded", client_key=key[:20], count=count)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded. Please try again later."},
-                headers={"Retry-After": str(max(1, retry_after))},
+                headers={"Retry-After": str(retry_after)},
             )
 
         return await call_next(request)

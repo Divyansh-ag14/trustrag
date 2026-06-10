@@ -33,6 +33,68 @@ async def _ok_next(_request):
     return Response("ok")
 
 
+# --- Fake async Redis (sorted-set sliding window) for hermetic enforcement tests ---
+class _FakePipeline:
+    def __init__(self, store):
+        self._store = store
+        self._ops = []
+
+    def zremrangebyscore(self, key, mn, mx):
+        self._ops.append(("zrem", key, mn, mx))
+        return self
+
+    def zadd(self, key, mapping):
+        self._ops.append(("zadd", key, mapping))
+        return self
+
+    def zcard(self, key):
+        self._ops.append(("zcard", key))
+        return self
+
+    def expire(self, key, ttl):
+        self._ops.append(("expire", key, ttl))
+        return self
+
+    async def execute(self):
+        return [self._store._apply(op) for op in self._ops]
+
+
+class _FakeAsyncRedis:
+    def __init__(self):
+        self.data: dict[str, dict[str, float]] = {}
+
+    def pipeline(self):
+        return _FakePipeline(self)
+
+    def _apply(self, op):
+        kind = op[0]
+        if kind == "zrem":
+            _, key, mn, mx = op
+            d = self.data.get(key, {})
+            removed = [m for m, s in d.items() if mn <= s <= mx]
+            for m in removed:
+                del d[m]
+            return len(removed)
+        if kind == "zadd":
+            _, key, mapping = op
+            self.data.setdefault(key, {}).update(mapping)
+            return len(mapping)
+        if kind == "zcard":
+            return len(self.data.get(op[1], {}))
+        return True  # expire
+
+    async def zrange(self, key, start, stop, withscores=False):
+        items = sorted(self.data.get(key, {}).items(), key=lambda kv: kv[1])
+        sel = items[start:] if stop == -1 else items[start:stop + 1]
+        return sel if withscores else [m for m, _ in sel]
+
+
+def _mw(max_requests: int) -> RateLimitMiddleware:
+    mw = RateLimitMiddleware(None, max_requests=max_requests, window_seconds=60)
+    mw._redis = _FakeAsyncRedis()
+    return mw
+
+
 class TestClientKey:
     def setup_method(self):
         self.mw = RateLimitMiddleware(None, max_requests=60, window_seconds=60)
@@ -66,7 +128,7 @@ class TestClientKey:
 
 class TestEnforcement:
     async def test_limit_enforced_for_a_user(self):
-        mw = RateLimitMiddleware(None, max_requests=3, window_seconds=60)
+        mw = _mw(3)
         req = _request(token=_token(uuid.uuid4()))
 
         for _ in range(3):
@@ -80,7 +142,7 @@ class TestEnforcement:
 
     async def test_one_user_exhausting_limit_does_not_block_another(self):
         # This is exactly what the old global-bucket bug broke.
-        mw = RateLimitMiddleware(None, max_requests=3, window_seconds=60)
+        mw = _mw(3)
         req_a = _request(token=_token(uuid.uuid4()))
         req_b = _request(token=_token(uuid.uuid4()))
 
@@ -92,7 +154,7 @@ class TestEnforcement:
         assert resp_b.status_code == 200
 
     async def test_separate_ips_isolated(self):
-        mw = RateLimitMiddleware(None, max_requests=2, window_seconds=60)
+        mw = _mw(2)
         req_1 = _request(token=None, host="10.0.0.1")
         req_2 = _request(token=None, host="10.0.0.2")
 
@@ -101,3 +163,16 @@ class TestEnforcement:
 
         resp_2 = await mw.dispatch(req_2, _ok_next)
         assert resp_2.status_code == 200
+
+    async def test_fails_open_when_redis_unavailable(self):
+        # If Redis is down the limiter must not take the API down with it.
+        class _BrokenRedis:
+            def pipeline(self):
+                raise ConnectionError("redis down")
+
+        mw = _mw(1)
+        mw._redis = _BrokenRedis()
+        req = _request(token=_token(uuid.uuid4()))
+        for _ in range(5):  # well over the limit of 1
+            resp = await mw.dispatch(req, _ok_next)
+            assert resp.status_code == 200

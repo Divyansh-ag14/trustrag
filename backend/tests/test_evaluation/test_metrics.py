@@ -134,3 +134,42 @@ class TestAveragePrecision:
 
     def test_empty_relevant(self):
         assert average_precision(["a", "b"], []) == 1.0
+
+
+# --- Answer relevance (LLM judge) ------------------------------------------
+
+import json
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from app.evaluation.metrics import answer_relevance
+
+
+def _client_returning(score):
+    message = SimpleNamespace(content=json.dumps({"score": score}))
+    usage = SimpleNamespace(prompt_tokens=40, completion_tokens=5)
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)], usage=usage)
+    create = lambda **kwargs: response  # noqa: E731
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+
+class TestAnswerRelevance:
+    @patch("app.evaluation.metrics._get_client")
+    def test_returns_score_and_tokens(self, mock_get_client):
+        mock_get_client.return_value = _client_returning(0.9)
+        r = answer_relevance("What is the refund window?", "Enterprise refunds within 30 days.")
+        assert r.score == 0.9
+        assert r.prompt_tokens == 40
+
+    @patch("app.evaluation.metrics._get_client")
+    def test_clamps_out_of_range(self, mock_get_client):
+        mock_get_client.return_value = _client_returning(1.7)
+        assert answer_relevance("q", "a long enough answer") .score == 1.0
+
+    def test_empty_answer_is_zero(self):
+        assert answer_relevance("q", "   ").score == 0.0
+
+    @patch("app.evaluation.metrics._get_client")
+    def test_fails_to_zero_on_error(self, mock_get_client):
+        mock_get_client.return_value.chat.completions.create.side_effect = Exception("api down")
+        assert answer_relevance("q", "some answer text").score == 0.0

@@ -1,6 +1,21 @@
 """Retrieval and generation quality metrics for evaluation runs."""
 
+import json
 import math
+from dataclasses import dataclass
+
+from openai import OpenAI
+
+from app.config import settings
+
+_client: OpenAI | None = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    return _client
 
 
 def recall_at_k(retrieved_doc_ids: list[str], expected_doc_ids: list[str], k: int = 10) -> float:
@@ -98,3 +113,53 @@ def average_precision(retrieved_doc_ids: list[str], relevant_doc_ids: list[str])
         return 0.0
 
     return sum_precision / len(relevant_set)
+
+
+# --- Generation quality: answer relevance (LLM judge) -----------------------
+
+ANSWER_RELEVANCE_SYSTEM = """You score how well an ANSWER addresses a QUESTION — relevance only, NOT factual correctness.
+
+Score 0.0 to 1.0:
+- 1.0: directly and completely addresses what was asked
+- 0.5: partially addresses it, or answers a related but different question
+- 0.0: does not address the question, is evasive, or is a refusal/"I don't know"
+
+Return ONLY JSON: {"score": <float 0.0-1.0>}"""
+
+
+@dataclass
+class AnswerRelevanceResult:
+    score: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+def answer_relevance(question: str, answer: str) -> AnswerRelevanceResult:
+    """LLM-judge: how directly does the answer address the question? (0.0–1.0)."""
+    if not answer.strip():
+        return AnswerRelevanceResult(score=0.0)
+
+    try:
+        client = _get_client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": ANSWER_RELEVANCE_SYSTEM},
+                {"role": "user", "content": json.dumps({"question": question, "answer": answer[:4000]})},
+            ],
+            temperature=0.0,
+        )
+        content = (response.choices[0].message.content or "{}").strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1]
+        if content.endswith("```"):
+            content = content[:-3]
+        score = float(json.loads(content.strip()).get("score", 0.0))
+        usage = response.usage
+        return AnswerRelevanceResult(
+            score=max(0.0, min(1.0, score)),
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+        )
+    except Exception:
+        return AnswerRelevanceResult(score=0.0)

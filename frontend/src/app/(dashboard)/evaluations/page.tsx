@@ -38,6 +38,7 @@ const METRIC_CARDS: MetricCard[] = [
   { label: "NDCG@10", key: "ndcg_at_10", format: "percent", target: 0.75, higherIsBetter: true },
   { label: "Faithfulness", key: "faithfulness", format: "percent", target: 0.85, higherIsBetter: true },
   { label: "Citation Accuracy", key: "citation_accuracy", format: "percent", target: 0.9, higherIsBetter: true },
+  { label: "Answer Relevance", key: "answer_relevance", format: "percent", target: 0.8, higherIsBetter: true },
   { label: "Hallucination", key: "hallucination_rate", format: "percent", target: 0.1, higherIsBetter: false },
   { label: "Avg Confidence", key: "avg_confidence", format: "percent", target: 0.8, higherIsBetter: true },
   { label: "Avg Latency", key: "avg_latency_ms", format: "ms", target: 5000, higherIsBetter: false },

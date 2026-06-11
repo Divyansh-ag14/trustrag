@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.evaluation.metrics import (
+    answer_relevance,
     average_precision,
     hit_rate,
     mrr,
@@ -104,6 +105,7 @@ async def run_evaluation(
         "faithfulness": [],
         "citation_accuracy": [],
         "hallucination_rate": [],
+        "answer_relevance": [],
         "total_cost_usd": 0.0,
     }
 
@@ -146,6 +148,7 @@ async def run_evaluation(
     for key in [
         "recall_at_10", "precision_at_10", "mrr", "ndcg_at_10",
         "hit_rate", "avg_precision", "faithfulness", "citation_accuracy", "hallucination_rate",
+        "answer_relevance",
     ]:
         values = aggregate_metrics[key]
         final_metrics[key] = round(sum(values) / len(values), 4) if values else 0.0
@@ -231,6 +234,7 @@ async def _evaluate_single_item(
     faithfulness_score = 1.0
     hallucination_score = 0.0
     citation_accuracy_score = 1.0
+    answer_relevance_score = 0.0
 
     if context_result.formatted_context.strip():
         gen_result = generate(item.question, context_result.formatted_context, "AcmeSaaS")
@@ -260,6 +264,13 @@ async def _evaluate_single_item(
             hc_result.prompt_tokens, hc_result.completion_tokens, model="gpt-4o-mini"
         )
 
+        # Step 6: Answer relevance (does the answer address the question?)
+        ar_result = answer_relevance(item.question, answer_text)
+        answer_relevance_score = ar_result.score
+        gen_cost += calculate_llm_cost(
+            ar_result.prompt_tokens, ar_result.completion_tokens, model="gpt-4o-mini"
+        )
+
     latency_ms = int((time.perf_counter() - start) * 1000)
 
     # Compute retrieval metrics
@@ -282,6 +293,7 @@ async def _evaluate_single_item(
     aggregate_metrics["faithfulness"].append(faithfulness_score)
     aggregate_metrics["citation_accuracy"].append(citation_accuracy_score)
     aggregate_metrics["hallucination_rate"].append(hallucination_score)
+    aggregate_metrics["answer_relevance"].append(answer_relevance_score)
     aggregate_metrics["total_cost_usd"] += gen_cost
 
     has_citation = len(citations_used) > 0
@@ -306,6 +318,7 @@ async def _evaluate_single_item(
             "faithfulness": round(faithfulness_score, 4),
             "citation_accuracy": round(citation_accuracy_score, 4),
             "hallucination_rate": round(hallucination_score, 4),
+            "answer_relevance": round(answer_relevance_score, 4),
         },
         "confidence": confidence,
         "has_citation": has_citation,

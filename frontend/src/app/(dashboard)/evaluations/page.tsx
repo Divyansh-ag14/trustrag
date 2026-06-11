@@ -179,6 +179,31 @@ export default function EvaluationsPage() {
         </Button>
       </div>
 
+      {/* Regression banner */}
+      {(() => {
+        const regressions = (latestRun?.metrics as Record<string, unknown> | undefined)
+          ?.regressions as
+          | { metric: string; current: number; baseline: number; degraded_by: number }[]
+          | undefined;
+        if (!regressions || regressions.length === 0) return null;
+        return (
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-red-400">
+              <TrendingDown className="h-4 w-4" />
+              {regressions.length} metric{regressions.length > 1 ? "s" : ""} regressed vs recent runs
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-red-300/90">
+              {regressions.map((r) => (
+                <span key={r.metric}>
+                  {r.metric}: {(r.current * 100).toFixed(1)}% (was {(r.baseline * 100).toFixed(1)}%, −
+                  {(r.degraded_by * 100).toFixed(1)}pt)
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
         {METRIC_CARDS.map((metric) => {

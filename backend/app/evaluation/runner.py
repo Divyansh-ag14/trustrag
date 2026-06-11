@@ -18,6 +18,7 @@ from app.evaluation.metrics import (
     precision_at_k,
     recall_at_k,
 )
+from app.evaluation.regression import detect_regressions
 from app.models.document import Document
 from app.models.evaluation import EvaluationDataset, EvaluationItem, EvaluationRun
 from app.rag.citation_validator import validate_citations
@@ -162,6 +163,26 @@ async def run_evaluation(
     final_metrics["items_passed"] = sum(
         1 for r in per_item_results if r.get("status") == "success"
     )
+
+    # Regression detection: compare against the last few completed runs.
+    prior_runs = await db.execute(
+        select(EvaluationRun)
+        .where(
+            EvaluationRun.dataset_id == dataset_id,
+            EvaluationRun.status == "completed",
+            EvaluationRun.id != run_id,
+        )
+        .order_by(EvaluationRun.completed_at.desc())
+        .limit(3)
+    )
+    history = [r.metrics for r in prior_runs.scalars().all() if r.metrics]
+    final_metrics["regressions"] = detect_regressions(final_metrics, history)
+    if final_metrics["regressions"]:
+        logger.warning(
+            "evaluation.regressions_detected",
+            run_id=str(run_id),
+            regressions=final_metrics["regressions"],
+        )
 
     run.metrics = final_metrics
     run.per_item_results = per_item_results

@@ -13,6 +13,7 @@ from app.rag.hallucination_checker import check_hallucination
 from app.rag.query_understanding import analyze_query
 from app.rag.reranker import rerank
 from app.rag.retriever import hybrid_retrieve, RetrievedChunk
+from app.services.knowledge_gap_service import record_knowledge_gap
 from app.utils.costs import calculate_embedding_cost, calculate_llm_cost, calculate_rerank_cost
 from app.utils.tokens import count_tokens
 
@@ -214,6 +215,21 @@ async def process_query(
 
         await db.flush()
 
+        # Failed/weak answers become tracked knowledge gaps for admins to fill.
+        if status == "low_confidence":
+            gap_reason = "hallucination_blocked" if hallucination_result.action == "block" else "low_confidence"
+            weak = [
+                {"title": c.document_title, "score": round(c.final_score, 4)}
+                for c in context_result.chunks_used[:3]
+            ]
+            try:
+                await record_knowledge_gap(
+                    db, workspace_id, query, gap_reason,
+                    query_id=query_record.id, weak_sources=weak,
+                )
+            except Exception as e:
+                logger.warning("knowledge_gap.record_failed", error=str(e))
+
         logger.info(
             "pipeline.complete",
             query_id=str(query_record.id),
@@ -296,6 +312,14 @@ async def _save_no_answer(
     )
     db.add(result_record)
     await db.flush()
+
+    try:
+        await record_knowledge_gap(
+            db, query_record.workspace_id, query_record.original_query,
+            "no_answer", query_id=query_record.id,
+        )
+    except Exception as e:
+        logger.warning("knowledge_gap.record_failed", error=str(e))
 
     return {
         "query_id": query_record.id,

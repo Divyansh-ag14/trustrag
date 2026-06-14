@@ -10,6 +10,7 @@ import {
   Activity,
   Settings,
   Shield,
+  Lightbulb,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const ICON_MAP = {
   ThumbsUp,
   Activity,
   Settings,
+  Lightbulb,
 } as const;
 
 const NAV_ITEMS = [
@@ -32,6 +34,7 @@ const NAV_ITEMS = [
   { label: "Documents", href: "/documents", icon: "FileText" as const },
   { label: "Evaluations", href: "/evaluations", icon: "BarChart3" as const },
   { label: "Feedback", href: "/feedback", icon: "ThumbsUp" as const },
+  { label: "Knowledge Gaps", href: "/knowledge-gaps", icon: "Lightbulb" as const },
   { label: "Analytics", href: "/analytics", icon: "Activity" as const },
 ];
 

@@ -5,6 +5,7 @@ from app.models.document import Document
 from app.models.evaluation import EvaluationDataset, EvaluationItem, EvaluationRun
 from app.models.feedback import Feedback
 from app.models.ingestion_job import IngestionJob
+from app.models.knowledge_gap import KnowledgeGap
 from app.models.query import Query, QueryResult, RetrievedChunk
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -23,5 +24,6 @@ __all__ = [
     "EvaluationItem",
     "EvaluationRun",
     "IngestionJob",
+    "KnowledgeGap",
     "APIKey",
 ]

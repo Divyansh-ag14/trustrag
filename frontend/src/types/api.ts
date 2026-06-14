@@ -151,6 +151,28 @@ export interface FeedbackStats {
   unreviewed: number;
 }
 
+export interface KnowledgeGap {
+  id: string;
+  query_id: string | null;
+  question: string;
+  reason: string;
+  missing_topic: string | null;
+  weak_sources: { title: string; score: number }[];
+  occurrences: number;
+  status: string;
+  assigned_to: string | null;
+  resolution_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeGapStats {
+  total: number;
+  open: number;
+  resolved: number;
+  by_reason: Record<string, number>;
+}
+
 export interface Connector {
   id: string;
   name: string;

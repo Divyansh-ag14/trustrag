@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.middleware import RateLimitMiddleware, RequestIDMiddleware
-from app.api.routes import admin, analytics, auth, chat, connectors, documents, evaluation, feedback, health, knowledge_gaps
+from app.api.routes import admin, analytics, auth, chat, connectors, documents, evaluation, feedback, health, knowledge_gaps, verified_answers
 from app.config import settings
 from app.utils.logging import setup_logging
 
@@ -77,3 +77,4 @@ app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(connectors.router, prefix="/api/v1")
 app.include_router(knowledge_gaps.router, prefix="/api/v1")
+app.include_router(verified_answers.router, prefix="/api/v1")

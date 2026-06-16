@@ -17,6 +17,7 @@ interface ChatStore {
       citations?: Citation[];
       confidence?: number;
       status?: string;
+      verified?: boolean;
       has_conflicts?: boolean;
       follow_up_suggestions?: string[];
       latency_breakdown?: Record<string, number>;

@@ -62,6 +62,7 @@ export function useChat() {
           citations: data.citations || [],
           confidence: data.confidence_score ?? 0,
           status: data.status || "success",
+          verified: data.verified || false,
           has_conflicts: data.has_conflicts || false,
           follow_up_suggestions: data.follow_up_suggestions || [],
           latency_breakdown: data.latency_breakdown || {},

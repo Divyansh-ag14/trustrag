@@ -8,6 +8,7 @@ from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_gap import KnowledgeGap
 from app.models.query import Query, QueryResult, RetrievedChunk
 from app.models.user import User
+from app.models.verified_answer import VerifiedAnswer
 from app.models.workspace import Workspace
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "EvaluationRun",
     "IngestionJob",
     "KnowledgeGap",
+    "VerifiedAnswer",
     "APIKey",
 ]

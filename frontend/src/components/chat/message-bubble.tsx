@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ThumbsUp, ThumbsDown, Loader2, CheckCircle2 } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Loader2, CheckCircle2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfidenceBadge } from "./confidence-badge";
 import { useChatStore } from "@/stores/chat-store";
@@ -97,6 +97,12 @@ export function MessageBubble({ message, onSendMessage }: MessageBubbleProps) {
         {!isUser && !message.isStreaming && message.confidence !== undefined && (
           <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/30">
             <ConfidenceBadge confidence={message.confidence} />
+            {message.verified && (
+              <span className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-400">
+                <ShieldCheck className="h-3 w-3" />
+                Verified
+              </span>
+            )}
             <div className="flex-1" />
             {feedbackSent ? (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">

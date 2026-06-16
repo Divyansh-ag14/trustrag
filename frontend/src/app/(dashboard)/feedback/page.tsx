@@ -8,6 +8,7 @@ import {
   Loader2,
   CheckCircle2,
   Clock,
+  ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export default function FeedbackPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
 
   const fetchFeedback = useCallback(async () => {
     try {
@@ -47,6 +49,15 @@ export default function FeedbackPage() {
     setLoading(true);
     fetchFeedback();
   }, [fetchFeedback]);
+
+  const approveCorrection = async (feedbackId: string) => {
+    try {
+      await api.post(`/verified-answers/from-feedback/${feedbackId}`, {});
+      setApprovedIds((prev) => new Set(prev).add(feedbackId));
+    } catch {
+      // silent
+    }
+  };
 
   const submitReview = async (feedbackId: string) => {
     if (!reviewNote.trim()) return;
@@ -92,6 +103,8 @@ export default function FeedbackPage() {
             onCancelReview={() => setReviewingId(null)}
             onNoteChange={setReviewNote}
             onSubmitReview={() => submitReview(item.id)}
+            approved={approvedIds.has(item.id)}
+            onApprove={() => approveCorrection(item.id)}
           />
         ))}
       </div>
@@ -183,18 +196,22 @@ function FeedbackRow({
   item,
   isReviewing,
   reviewNote,
+  approved,
   onStartReview,
   onCancelReview,
   onNoteChange,
   onSubmitReview,
+  onApprove,
 }: {
   item: FeedbackItem;
   isReviewing: boolean;
   reviewNote: string;
+  approved: boolean;
   onStartReview: () => void;
   onCancelReview: () => void;
   onNoteChange: (note: string) => void;
   onSubmitReview: () => void;
+  onApprove: () => void;
 }) {
   return (
     <div className="border border-border/40 rounded-lg p-4 space-y-3">
@@ -215,9 +232,26 @@ function FeedbackRow({
               </p>
             )}
             {item.corrected_answer && (
-              <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
-                <span className="text-muted-foreground">Corrected answer: </span>
-                {item.corrected_answer}
+              <div className="mt-2 p-2 bg-muted/30 rounded text-xs space-y-2">
+                <div>
+                  <span className="text-muted-foreground">Corrected answer: </span>
+                  {item.corrected_answer}
+                </div>
+                {approved ? (
+                  <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400">
+                    <ShieldCheck className="h-3 w-3 mr-1" />
+                    Verified — will be reused
+                  </Badge>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[11px] gap-1"
+                    onClick={onApprove}
+                  >
+                    <ShieldCheck className="h-3 w-3" /> Approve as verified answer
+                  </Button>
+                )}
               </div>
             )}
           </div>

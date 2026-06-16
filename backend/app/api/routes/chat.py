@@ -67,6 +67,7 @@ async def chat_query(
         answer=result["answer"],
         citations=citations,
         confidence_score=result["confidence_score"],
+        verified=result.get("verified", False),
         faithfulness_score=result.get("faithfulness_score"),
         hallucination_score=result.get("hallucination_score"),
         citation_accuracy=result.get("citation_accuracy"),

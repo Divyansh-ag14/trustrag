@@ -26,6 +26,7 @@ class ChatResponse(BaseModel):
     hallucination_score: float | None = None
     citation_accuracy: float | None = None
     status: str
+    verified: bool = False
     has_conflicts: bool = False
     follow_up_suggestions: list[str] = []
     retrieval_trace: dict = {}

@@ -14,6 +14,7 @@ from app.rag.query_understanding import analyze_query
 from app.rag.reranker import rerank
 from app.rag.retriever import hybrid_retrieve, RetrievedChunk
 from app.services.knowledge_gap_service import record_knowledge_gap
+from app.services.verified_answer_service import match_verified_answer
 from app.utils.costs import calculate_embedding_cost, calculate_llm_cost, calculate_rerank_cost
 from app.utils.tokens import count_tokens
 
@@ -41,6 +42,15 @@ async def process_query(
     await db.flush()
 
     try:
+        # Stage 0: verified-answer shortcut — if an admin-approved answer matches
+        # this question, serve it directly (skip retrieval/generation; zero cost).
+        t0 = time.perf_counter()
+        match = await match_verified_answer(db, workspace_id, query)
+        timings["verified_lookup_ms"] = int((time.perf_counter() - t0) * 1000)
+        if match:
+            va, score = match
+            return await _save_verified_answer(db, query_record, va, score, timings, total_start)
+
         # Stage 1: Query understanding
         t0 = time.perf_counter()
         analysis = analyze_query(query)
@@ -336,6 +346,50 @@ async def _save_no_answer(
         "latency_breakdown": timings,
         "token_usage": {},
         "cost_usd": 0.0,
+    }
+
+
+async def _save_verified_answer(
+    db: AsyncSession,
+    query_record: Query,
+    va,
+    score: float,
+    timings: dict,
+    total_start: float,
+) -> dict:
+    timings["total_ms"] = int((time.perf_counter() - total_start) * 1000)
+    trace = {"verified": True, "verified_answer_id": str(va.id), "match_score": round(score, 4)}
+
+    result_record = QueryResult(
+        query_id=query_record.id,
+        answer=va.answer,
+        confidence_score=1.0,
+        latency_ms=timings["total_ms"],
+        latency_breakdown=timings,
+        cost_usd=0.0,
+        status="success",
+        retrieval_trace=trace,
+    )
+    db.add(result_record)
+    await db.flush()
+
+    return {
+        "query_id": query_record.id,
+        "result_id": result_record.id,
+        "session_id": query_record.session_id,
+        "answer": va.answer,
+        "citations": [],
+        "confidence_score": 1.0,
+        "verified": True,
+        "status": "success",
+        "has_conflicts": False,
+        "follow_up_suggestions": [],
+        "escalation_needed": False,
+        "escalation_reason": None,
+        "latency_breakdown": timings,
+        "token_usage": {},
+        "cost_usd": 0.0,
+        "retrieval_trace": trace,
     }
 
 

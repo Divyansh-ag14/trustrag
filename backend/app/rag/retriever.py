@@ -1,5 +1,5 @@
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import structlog
@@ -7,7 +7,6 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_qdrant
 from app.ingestion.embedder import embed_single
 from app.ingestion.processor import _collection_name

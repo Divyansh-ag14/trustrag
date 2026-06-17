@@ -3,7 +3,7 @@ import uuid
 
 import structlog
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.workers.celery_app import celery_app
@@ -24,7 +24,7 @@ def _run_async(coro):
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def process_document_task(self, document_id: str, file_path: str):
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.ingestion.processor import process_document
 

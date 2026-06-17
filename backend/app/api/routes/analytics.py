@@ -1,11 +1,10 @@
 """Analytics API routes — usage, quality, cost, and latency aggregation."""
 
-import uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -47,7 +46,7 @@ async def get_usage_analytics(
 
     trunc = {"day": "day", "week": "week", "month": "month"}[granularity]
 
-    sql = text(f"""
+    sql = text("""
         SELECT
             date_trunc(:trunc, q.created_at) AS period,
             COUNT(*) AS query_count,
@@ -126,7 +125,7 @@ async def get_quality_analytics(
     workspace_id = str(user.workspace_id)
     trunc = {"day": "day", "week": "week", "month": "month"}[granularity]
 
-    sql = text(f"""
+    sql = text("""
         SELECT
             date_trunc(:trunc, q.created_at) AS period,
             AVG(qr.confidence_score) AS avg_confidence,
@@ -199,7 +198,7 @@ async def get_cost_analytics(
     workspace_id = str(user.workspace_id)
     trunc = {"day": "day", "week": "week", "month": "month"}[granularity]
 
-    sql = text(f"""
+    sql = text("""
         SELECT
             date_trunc(:trunc, q.created_at) AS period,
             SUM(qr.cost_usd) AS total_cost,

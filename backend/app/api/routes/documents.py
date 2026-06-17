@@ -1,4 +1,3 @@
-import os
 import uuid
 from pathlib import Path
 
@@ -60,7 +59,7 @@ async def upload_document(
             detail=f"File content does not match expected type: {source_type}",
         )
 
-    safe_name = validate_filename(file.filename)
+    validate_filename(file.filename)  # raises on unsafe filenames
     upload_dir = Path(settings.UPLOAD_DIR) / str(user.workspace_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -181,7 +180,7 @@ async def reindex_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     upload_dir = Path(settings.UPLOAD_DIR) / str(user.workspace_id)
-    files = list(upload_dir.glob(f"*"))
+    files = list(upload_dir.glob("*"))
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Original file not found")
 

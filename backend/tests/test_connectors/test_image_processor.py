@@ -1,9 +1,7 @@
 """Tests for GPT-4o vision image processor."""
 
-import uuid
 from unittest.mock import patch, MagicMock
 
-import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +14,6 @@ from app.ingestion.image_processor import (
 from app.models.document import Document
 from app.models.workspace import Workspace
 from app.models.user import User
-from tests.conftest import auth_header
 
 
 class TestDescribeImageFromBytes:

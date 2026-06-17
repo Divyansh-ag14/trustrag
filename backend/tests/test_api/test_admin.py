@@ -2,11 +2,9 @@
 
 import uuid
 
-import pytest
 from httpx import AsyncClient
 
 from app.models.user import User
-from app.models.workspace import Workspace
 from tests.conftest import auth_header
 
 

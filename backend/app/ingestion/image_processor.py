@@ -6,7 +6,6 @@ creates DocumentChunk records so they participate in hybrid search.
 
 import base64
 import uuid
-from datetime import datetime, timezone
 
 import httpx
 import structlog

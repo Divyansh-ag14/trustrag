@@ -19,8 +19,6 @@ from app.rag.reranker import rerank
 from app.rag.retriever import hybrid_retrieve
 from app.schemas.chat import ChatRequest, ChatResponse, CitationDetail, SessionResponse
 from app.config import settings
-from app.utils.costs import calculate_embedding_cost, calculate_llm_cost, calculate_rerank_cost
-from app.utils.tokens import count_tokens
 
 logger = structlog.get_logger()
 

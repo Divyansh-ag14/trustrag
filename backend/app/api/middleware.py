@@ -8,7 +8,6 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
-from app.config import settings
 from app.database import get_redis
 from app.services.auth_service import decode_token
 

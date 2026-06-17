@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_role, get_current_user
+from app.api.deps import require_role
 from app.connectors.encryption import encrypt_credentials, decrypt_credentials
 from app.database import get_db
 from app.models.connector import Connector

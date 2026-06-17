@@ -1,7 +1,6 @@
 """Tests for document parsers."""
 
 import tempfile
-from pathlib import Path
 
 from app.ingestion.parsers.markdown_parser import MarkdownParser
 from app.ingestion.parsers.text_parser import TextParser

@@ -1,6 +1,5 @@
 """Tests for file upload validation — filename sanitization, magic bytes, size."""
 
-import pytest
 
 from app.utils.file_validation import (
     validate_file_content,

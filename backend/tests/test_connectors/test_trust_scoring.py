@@ -116,7 +116,6 @@ class TestRerankWithTrust:
     @patch("app.rag.reranker._get_client")
     def test_default_weights_sum_to_one(self, mock_client):
         """The default reranker weights should sum to 1.0."""
-        from app.rag.reranker import rerank
 
         # Access default weights by calling with empty chunks
         w = {

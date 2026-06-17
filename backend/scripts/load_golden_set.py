@@ -86,7 +86,7 @@ async def main():
         await session.commit()
 
         print(f"Added {len(golden_data['items'])} evaluation items")
-        print(f"\nBreakdown:")
+        print("\nBreakdown:")
 
         # Count by type
         type_counts = {}

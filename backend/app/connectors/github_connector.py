@@ -180,7 +180,7 @@ class GitHubConnector(BaseConnector):
                 content = f"# {issue['title']}\n\n"
                 content += f"**Author:** {issue['user']['login']}\n"
                 content += f"**Created:** {issue['created_at']}\n"
-                labels = [l["name"] for l in issue.get("labels", [])]
+                labels = [lbl["name"] for lbl in issue.get("labels", [])]
                 if labels:
                     content += f"**Labels:** {', '.join(labels)}\n"
                 content += f"\n{issue.get('body', '') or ''}\n"

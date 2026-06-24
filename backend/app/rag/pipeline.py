@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 
@@ -109,22 +110,25 @@ async def process_query(
         gen_result = generate(query, context_result.formatted_context, workspace_name)
         timings["generation_ms"] = int((time.perf_counter() - t0) * 1000)
 
-        # Stage 6: Citation validation
-        t0 = time.perf_counter()
-        citation_validation = validate_citations(
-            gen_result.answer,
-            gen_result.citations_used,
-            context_result.chunks_used,
+        # Stages 6 & 7: citation validation + hallucination check both run on the
+        # same generated answer, independently. Run them concurrently (in threads,
+        # since the LLM clients are sync) instead of sequentially — saves ~one
+        # LLM round-trip of latency with zero change to the results.
+        (citation_validation, cv_ms), (hallucination_result, hc_ms) = await asyncio.gather(
+            _timed(
+                validate_citations,
+                gen_result.answer,
+                gen_result.citations_used,
+                context_result.chunks_used,
+            ),
+            _timed(
+                check_hallucination,
+                gen_result.answer,
+                context_result.formatted_context,
+            ),
         )
-        timings["citation_validation_ms"] = int((time.perf_counter() - t0) * 1000)
-
-        # Stage 7: Hallucination check
-        t0 = time.perf_counter()
-        hallucination_result = check_hallucination(
-            gen_result.answer,
-            context_result.formatted_context,
-        )
-        timings["hallucination_check_ms"] = int((time.perf_counter() - t0) * 1000)
+        timings["citation_validation_ms"] = cv_ms
+        timings["hallucination_check_ms"] = hc_ms
 
         timings["total_ms"] = int((time.perf_counter() - total_start) * 1000)
 
@@ -347,6 +351,13 @@ async def _save_no_answer(
         "token_usage": {},
         "cost_usd": 0.0,
     }
+
+
+async def _timed(fn, *args):
+    """Run a blocking fn in a worker thread; return (result, elapsed_ms)."""
+    t0 = time.perf_counter()
+    result = await asyncio.to_thread(fn, *args)
+    return result, int((time.perf_counter() - t0) * 1000)
 
 
 async def _save_verified_answer(

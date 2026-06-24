@@ -42,6 +42,10 @@ include = ["app*"]
 target-version = "py311"
 line-length = 100
 
+[tool.ruff.lint.per-file-ignores]
+# conftest deliberately sets settings before importing app modules
+"tests/conftest.py" = ["E402"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

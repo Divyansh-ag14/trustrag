@@ -2,13 +2,9 @@
 
 import uuid
 
-import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
-from app.models.workspace import Workspace
-from app.services.auth_service import hash_password
 from tests.conftest import auth_header
 
 

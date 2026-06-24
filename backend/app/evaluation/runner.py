@@ -20,7 +20,7 @@ from app.evaluation.metrics import (
 )
 from app.evaluation.regression import detect_regressions
 from app.models.document import Document
-from app.models.evaluation import EvaluationDataset, EvaluationItem, EvaluationRun
+from app.models.evaluation import EvaluationItem, EvaluationRun
 from app.rag.citation_validator import validate_citations
 from app.rag.context_builder import build_context
 from app.rag.generator import generate

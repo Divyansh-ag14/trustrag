@@ -31,7 +31,6 @@ def chunk_text(
             segments.append(para)
 
     chunks: list[Chunk] = []
-    current_tokens: list[str] = []
     current_text_parts: list[str] = []
     current_count = 0
 

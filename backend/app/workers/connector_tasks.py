@@ -6,10 +6,9 @@ from datetime import datetime, timezone
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.connectors.base import FetchedDocument
 from app.connectors.encryption import decrypt_credentials
 from app.models.connector import Connector
 from app.models.document import Document

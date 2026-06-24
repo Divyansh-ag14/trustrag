@@ -1,8 +1,11 @@
 """Tests for retrieval quality metrics."""
 
-import math
+import json
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.evaluation.metrics import (
+    answer_relevance,
     average_precision,
     hit_rate,
     mrr,
@@ -137,12 +140,6 @@ class TestAveragePrecision:
 
 
 # --- Answer relevance (LLM judge) ------------------------------------------
-
-import json
-from types import SimpleNamespace
-from unittest.mock import patch
-
-from app.evaluation.metrics import answer_relevance
 
 
 def _client_returning(score):

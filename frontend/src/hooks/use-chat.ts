@@ -26,7 +26,7 @@ export function useChat() {
 
       try {
         const token = localStorage.getItem("access_token");
-        const response = await fetch(`${API_BASE_URL}/chat/query`, {
+        const response = await fetch(`${API_BASE_URL}/chat/query/stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -38,38 +38,75 @@ export function useChat() {
           }),
         });
 
-        if (!response.ok) {
+        if (!response.ok || !response.body) {
           if (response.status === 401) {
             localStorage.removeItem("access_token");
             localStorage.removeItem("refresh_token");
             window.location.href = "/login";
             return;
           }
-          const error = await response.json().catch(() => ({ detail: "Request failed" }));
-          finalizeAssistant(assistantId, {
-            status: "error",
-            confidence: 0,
-          });
-          appendToLastAssistant(error.detail || "Something went wrong.");
+          finalizeAssistant(assistantId, { status: "error", confidence: 0 });
+          appendToLastAssistant("Something went wrong.");
           setStreaming(false);
           return;
         }
 
-        const data = await response.json();
+        // Parse the SSE stream: tokens arrive live, then a final `verdict` event
+        // with citations/confidence/status once the safety checks have run.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let accumulated = "";
 
-        appendToLastAssistant(data.answer || "No answer generated.");
-        finalizeAssistant(assistantId, {
-          citations: data.citations || [],
-          confidence: data.confidence_score ?? 0,
-          status: data.status || "success",
-          verified: data.verified || false,
-          has_conflicts: data.has_conflicts || false,
-          follow_up_suggestions: data.follow_up_suggestions || [],
-          latency_breakdown: data.latency_breakdown || {},
-          result_id: data.result_id,
-        });
-        if (data.session_id) {
-          setSessionId(data.session_id);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
+
+          for (const block of blocks) {
+            if (!block.trim()) continue;
+            let eventType = "message";
+            let dataStr = "";
+            for (const line of block.split("\n")) {
+              if (line.startsWith("event:")) eventType = line.slice(6).trim();
+              else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+            }
+            let data: Record<string, unknown> = {};
+            try {
+              data = dataStr ? JSON.parse(dataStr) : {};
+            } catch {
+              continue;
+            }
+
+            if (eventType === "token") {
+              const t = (data.data as string) || "";
+              accumulated += t;
+              appendToLastAssistant(t);
+            } else if (eventType === "verdict") {
+              const override = data.answer_override as string | null;
+              const note = data.note as string | null;
+              let content: string | undefined;
+              if (override) content = override;
+              else if (note) content = `${accumulated}\n\nNote: ${note}`;
+              finalizeAssistant(assistantId, {
+                ...(content !== undefined ? { content } : {}),
+                citations: (data.citations as never[]) || [],
+                confidence: (data.confidence as number) ?? 0,
+                status: (data.status as string) || "success",
+                verified: (data.verified as boolean) || false,
+                has_conflicts: (data.has_conflicts as boolean) || false,
+                follow_up_suggestions: (data.follow_up_suggestions as string[]) || [],
+                result_id: data.result_id as string,
+              });
+              if (data.session_id) setSessionId(data.session_id as string);
+            } else if (eventType === "error") {
+              appendToLastAssistant((data.detail as string) || "Something went wrong.");
+              finalizeAssistant(assistantId, { status: "error", confidence: 0 });
+            }
+          }
         }
       } catch (err) {
         appendToLastAssistant(

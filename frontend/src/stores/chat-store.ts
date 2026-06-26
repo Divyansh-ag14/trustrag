@@ -14,6 +14,7 @@ interface ChatStore {
   finalizeAssistant: (
     messageId: string,
     data: {
+      content?: string;
       citations?: Citation[];
       confidence?: number;
       status?: string;

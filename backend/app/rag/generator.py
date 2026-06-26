@@ -5,7 +5,11 @@ import structlog
 from openai import OpenAI
 
 from app.config import settings
-from app.rag.prompts import GROUNDED_GENERATION_SYSTEM, GROUNDED_GENERATION_USER
+from app.rag.prompts import (
+    GROUNDED_GENERATION_STREAM_SYSTEM,
+    GROUNDED_GENERATION_SYSTEM,
+    GROUNDED_GENERATION_USER,
+)
 
 logger = structlog.get_logger()
 
@@ -191,3 +195,39 @@ def generate_stream(
             "usage": usage_data,
         },
     }
+
+
+def generate_answer_stream(query: str, context: str, workspace_name: str = "your organization"):
+    """Stream a plain-text grounded answer (clean tokens, no JSON wrapper).
+
+    Yields {"type": "token", "data": str} per token, then a final
+    {"type": "usage", "data": {prompt_tokens, completion_tokens, total_tokens}}.
+    Confidence + citations are derived afterward (faithfulness check + [N] markers).
+    """
+    client = _get_client()
+    system_msg = GROUNDED_GENERATION_STREAM_SYSTEM.format(workspace_name=workspace_name)
+    user_msg = GROUNDED_GENERATION_USER.format(context=context, query=query)
+
+    stream = client.chat.completions.create(
+        model=settings.LLM_MODEL,
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=settings.LLM_TEMPERATURE,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+
+    usage_data = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield {"type": "token", "data": chunk.choices[0].delta.content}
+        if chunk.usage:
+            usage_data = {
+                "prompt_tokens": chunk.usage.prompt_tokens,
+                "completion_tokens": chunk.usage.completion_tokens,
+                "total_tokens": chunk.usage.total_tokens,
+            }
+
+    yield {"type": "usage", "data": usage_data}

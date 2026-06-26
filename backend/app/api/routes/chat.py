@@ -12,13 +12,8 @@ from app.database import get_db
 from app.models.query import Query, QueryResult
 from app.models.user import User
 from app.models.workspace import Workspace
-from app.rag.pipeline import process_query
-from app.rag.context_builder import build_context
-from app.rag.generator import generate_stream
-from app.rag.reranker import rerank
-from app.rag.retriever import hybrid_retrieve
+from app.rag.pipeline import process_query, process_query_stream
 from app.schemas.chat import ChatRequest, ChatResponse, CitationDetail, SessionResponse
-from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -85,67 +80,34 @@ async def chat_query_stream(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Stream the answer token-by-token through the FULL pipeline.
+
+    Tokens stream as the answer generates; safety checks (citation validation +
+    hallucination check) run AFTER and arrive in a final `verdict` event with the
+    confidence/citations/status (and an `answer_override` if the answer was blocked).
+    """
     workspace = await db.get(Workspace, user.workspace_id)
     workspace_name = workspace.name if workspace else "your organization"
     session_id = request.session_id or uuid.uuid4()
 
-    query_record = Query(
-        workspace_id=user.workspace_id,
-        user_id=user.id,
-        original_query=request.query,
-        session_id=session_id,
-    )
-    db.add(query_record)
-    await db.flush()
-
-    retrieved = await hybrid_retrieve(
-        request.query, user.workspace_id, db, top_k=settings.RETRIEVAL_TOP_K,
-    )
-
-    if not retrieved:
-        async def empty_stream():
-            yield _sse_event("answer", "I couldn't find relevant information for this question in the knowledge base.")
-            yield _sse_event("metadata", {"confidence": 0.0, "citations": [], "status": "no_answer"})
-            yield _sse_event("done", {})
-
-        return StreamingResponse(empty_stream(), media_type="text/event-stream")
-
-    ranked = rerank(request.query, retrieved, top_k=settings.RERANK_TOP_K)
-    context_result = build_context(ranked, token_budget=settings.CONTEXT_TOKEN_BUDGET)
-
-    chunks_used = context_result.chunks_used
-
     async def event_stream():
-        for event in generate_stream(request.query, context_result.formatted_context, workspace_name):
-            if event["type"] == "token":
-                yield _sse_event("token", event["data"])
-            elif event["type"] == "answer":
-                yield _sse_event("answer", event["data"])
-            elif event["type"] == "metadata":
-                meta = event["data"]
-                citations = []
-                for idx in meta.get("citations_used", []):
-                    if 1 <= idx <= len(chunks_used):
-                        chunk = chunks_used[idx - 1]
-                        citations.append({
-                            "index": idx,
-                            "document_title": chunk.document_title,
-                            "chunk_snippet": chunk.content[:200],
-                            "document_id": str(chunk.document_id),
-                            "relevance_score": chunk.final_score or chunk.rrf_score,
-                        })
-
-                yield _sse_event("metadata", {
-                    "query_id": str(query_record.id),
-                    "session_id": str(session_id),
-                    "confidence": meta.get("confidence", 0.5),
-                    "citations": citations,
-                    "has_conflicts": meta.get("has_conflicts", False),
-                    "follow_up_suggestions": meta.get("follow_up_suggestions", []),
-                    "status": "success" if meta.get("confidence", 0.5) >= 0.6 else "low_confidence",
-                })
-
-        yield _sse_event("done", {})
+        async for ev in process_query_stream(
+            query=request.query,
+            workspace_id=user.workspace_id,
+            user_id=user.id,
+            db=db,
+            session_id=session_id,
+            workspace_name=workspace_name,
+        ):
+            etype = ev["type"]
+            if etype == "token":
+                yield _sse_event("token", {"data": ev["data"]})
+            elif etype == "verdict":
+                yield _sse_event("verdict", ev["data"])
+            elif etype == "error":
+                yield _sse_event("error", {"detail": ev["data"]})
+            elif etype == "done":
+                yield _sse_event("done", {})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

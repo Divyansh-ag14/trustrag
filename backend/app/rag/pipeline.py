@@ -1,3 +1,5 @@
+import asyncio
+import re
 import time
 import uuid
 
@@ -8,7 +10,7 @@ from app.config import settings
 from app.models.query import Query, QueryResult, RetrievedChunk as RetrievedChunkModel
 from app.rag.citation_validator import validate_citations
 from app.rag.context_builder import build_context
-from app.rag.generator import generate, GenerationResult
+from app.rag.generator import generate, generate_answer_stream, GenerationResult
 from app.rag.hallucination_checker import check_hallucination
 from app.rag.query_understanding import analyze_query
 from app.rag.reranker import rerank
@@ -488,3 +490,263 @@ async def _get_existing_chunk_ids(db: AsyncSession, chunk_ids: list[str]) -> set
     sql = text(f"SELECT id FROM document_chunks WHERE id IN ({placeholders})")
     result = await db.execute(sql)
     return {str(row.id) for row in result.fetchall()}
+
+
+# ---------------------------------------------------------------------------
+# Streaming pipeline
+# ---------------------------------------------------------------------------
+
+async def _timed(fn, *args):
+    """Run a blocking fn in a worker thread; return (result, elapsed_ms)."""
+    t0 = time.perf_counter()
+    result = await asyncio.to_thread(fn, *args)
+    return result, int((time.perf_counter() - t0) * 1000)
+
+
+def _citations_from_text(answer: str, chunks_used: list[RetrievedChunk]) -> list[dict]:
+    """Build citation details from [N] markers in a plain-text answer."""
+    indices = sorted({int(m) for m in re.findall(r"\[(\d+)\]", answer)})
+    citations = []
+    for idx in indices:
+        if 1 <= idx <= len(chunks_used):
+            chunk = chunks_used[idx - 1]
+            citations.append({
+                "index": idx,
+                "document_title": chunk.document_title,
+                "chunk_snippet": chunk.content[:200],
+                "document_id": str(chunk.document_id),
+                "relevance_score": chunk.final_score or chunk.rrf_score,
+            })
+    return citations
+
+
+async def process_query_stream(
+    query: str,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+    session_id: uuid.UUID | None = None,
+    workspace_name: str = "your organization",
+):
+    """Streaming variant of process_query.
+
+    Yields event dicts: {"type":"token"|"verdict"|"done"|"error", "data": ...}.
+    Safety checks ALWAYS run AFTER streaming — the answer is only "finalized" once
+    verified. If the hallucination check blocks it, the verdict carries an
+    `answer_override` so the frontend replaces the streamed text.
+    """
+    timings: dict[str, int] = {}
+    total_start = time.perf_counter()
+
+    query_record = Query(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        original_query=query,
+        session_id=session_id or uuid.uuid4(),
+    )
+    db.add(query_record)
+    await db.flush()
+
+    try:
+        # Stage 0: verified-answer shortcut
+        match = await match_verified_answer(db, workspace_id, query)
+        if match:
+            va, score = match
+            yield {"type": "token", "data": va.answer}
+            timings["total_ms"] = int((time.perf_counter() - total_start) * 1000)
+            trace = {"verified": True, "verified_answer_id": str(va.id), "match_score": round(score, 4)}
+            result_record = QueryResult(
+                query_id=query_record.id, answer=va.answer, confidence_score=1.0,
+                latency_ms=timings["total_ms"], latency_breakdown=timings, cost_usd=0.0,
+                status="success", retrieval_trace=trace,
+            )
+            db.add(result_record)
+            await db.flush()
+            yield {"type": "verdict", "data": {
+                "query_id": str(query_record.id), "result_id": str(result_record.id),
+                "session_id": str(query_record.session_id), "status": "success",
+                "confidence": 1.0, "verified": True, "citations": [],
+                "has_conflicts": False, "follow_up_suggestions": [], "note": None,
+                "answer_override": None,
+            }}
+            yield {"type": "done"}
+            return
+
+        # Stage 1: query understanding
+        analysis = analyze_query(query)
+        search_query = analysis.rewritten_query
+        query_record.rewritten_query = search_query
+        query_record.query_type = analysis.query_type
+        query_record.intent = analysis.intent
+        query_record.metadata_filters = analysis.metadata_filters
+        retrieval_filters = await _validate_filters(
+            db, workspace_id, analysis.metadata_filters, query_text=query
+        )
+
+        # Stage 2: retrieval (+ retry without filters)
+        retrieved = await hybrid_retrieve(
+            search_query, workspace_id, db, top_k=settings.RETRIEVAL_TOP_K,
+            filters=retrieval_filters, date_sensitive=analysis.date_sensitive,
+        )
+        if not retrieved and retrieval_filters:
+            retrieved = await hybrid_retrieve(
+                search_query, workspace_id, db, top_k=settings.RETRIEVAL_TOP_K,
+                date_sensitive=analysis.date_sensitive,
+            )
+
+        # Stage 3-4: rerank + context
+        ranked = []
+        context_result = None
+        context_text = ""
+        if retrieved:
+            ranked = rerank(search_query, retrieved, top_k=settings.RERANK_TOP_K)
+            context_result = build_context(ranked, token_budget=settings.CONTEXT_TOKEN_BUDGET)
+            context_text = context_result.formatted_context
+
+        if not context_text.strip():
+            no_answer = "I couldn't find relevant information for this question in the knowledge base."
+            yield {"type": "token", "data": no_answer}
+            timings["total_ms"] = int((time.perf_counter() - total_start) * 1000)
+            result_record = QueryResult(
+                query_id=query_record.id, answer=no_answer, confidence_score=0.0,
+                latency_ms=timings["total_ms"], latency_breakdown=timings, status="no_answer",
+            )
+            db.add(result_record)
+            await db.flush()
+            try:
+                await record_knowledge_gap(db, workspace_id, query, "no_answer", query_id=query_record.id)
+            except Exception as e:
+                logger.warning("knowledge_gap.record_failed", error=str(e))
+            yield {"type": "verdict", "data": {
+                "query_id": str(query_record.id), "result_id": str(result_record.id),
+                "session_id": str(query_record.session_id), "status": "no_answer",
+                "confidence": 0.0, "verified": False, "citations": [],
+                "has_conflicts": False, "follow_up_suggestions": [], "note": None,
+                "answer_override": None,
+            }}
+            yield {"type": "done"}
+            return
+
+        # Stage 5: stream generation (plain text)
+        full_answer = ""
+        gen_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        t0 = time.perf_counter()
+        for event in generate_answer_stream(query, context_text, workspace_name):
+            if event["type"] == "token":
+                full_answer += event["data"]
+                yield {"type": "token", "data": event["data"]}
+            elif event["type"] == "usage":
+                gen_usage = event["data"]
+        timings["generation_ms"] = int((time.perf_counter() - t0) * 1000)
+
+        # Stages 6 & 7: validation runs AFTER streaming, in parallel
+        cited_indices = sorted({int(m) for m in re.findall(r"\[(\d+)\]", full_answer)})
+        (citation_validation, _), (hallucination_result, _) = await asyncio.gather(
+            _timed(validate_citations, full_answer, cited_indices, context_result.chunks_used),
+            _timed(check_hallucination, full_answer, context_text),
+        )
+
+        # Confidence from faithfulness (more trustworthy than model self-report)
+        faithfulness = hallucination_result.faithfulness_score
+        confidence = faithfulness if faithfulness is not None else 0.5
+
+        status = "success"
+        note = None
+        answer_override = None
+        stored_answer = full_answer
+        if hallucination_result.action == "block":
+            status = "low_confidence"
+            answer_override = (
+                "I was unable to generate a fully reliable answer. "
+                "Here are the most relevant sources I found:\n\n"
+                + "\n".join(
+                    f"- {c.document_title}: {c.content[:150]}..."
+                    for c in context_result.chunks_used[:5]
+                )
+            )
+            stored_answer = answer_override
+        elif hallucination_result.action == "disclaimer":
+            note = (
+                "This answer could not be automatically verified against the sources. Please double-check important details."
+                if hallucination_result.verification_failed
+                else "Some statements in this answer may not be fully supported by the available sources."
+            )
+            stored_answer = full_answer + "\n\nNote: " + note
+        elif confidence < 0.6:
+            status = "low_confidence"
+
+        if context_result.stale_sources:
+            sources_str = ", ".join(context_result.stale_sources[:3])
+            stale_note = f"Some information comes from potentially outdated sources ({sources_str}). Please verify with the latest documentation."
+            note = (note + " " + stale_note) if note else stale_note
+            stored_answer += f"\n\nNote: {stale_note}"
+
+        citations = _citations_from_text(full_answer, context_result.chunks_used)
+
+        timings["total_ms"] = int((time.perf_counter() - total_start) * 1000)
+        query_tokens = count_tokens(query)
+        validation_cost = calculate_llm_cost(
+            citation_validation.prompt_tokens + hallucination_result.prompt_tokens,
+            citation_validation.completion_tokens + hallucination_result.completion_tokens,
+            model="gpt-4o-mini",
+        )
+        qu_cost = calculate_llm_cost(analysis.prompt_tokens, analysis.completion_tokens, model="gpt-4o-mini")
+        gen_cost = calculate_llm_cost(gen_usage.get("prompt_tokens", 0), gen_usage.get("completion_tokens", 0))
+        cost = calculate_embedding_cost(query_tokens) + calculate_rerank_cost(len(retrieved)) + gen_cost + validation_cost + qu_cost
+
+        result_record = QueryResult(
+            query_id=query_record.id, answer=stored_answer, confidence_score=confidence,
+            faithfulness_score=hallucination_result.faithfulness_score,
+            hallucination_score=hallucination_result.hallucination_score,
+            citation_accuracy=citation_validation.citation_accuracy,
+            latency_ms=timings["total_ms"], latency_breakdown=timings,
+            token_usage=gen_usage, cost_usd=cost,
+            citations=[c.copy() for c in citations], status=status,
+            retrieval_trace={
+                "has_conflicts": context_result.has_conflicts,
+                "stale_sources": context_result.stale_sources,
+                "query_type": analysis.query_type, "intent": analysis.intent,
+                "rewritten_query": analysis.rewritten_query,
+                "hallucination_action": hallucination_result.action, "streamed": True,
+            },
+        )
+        db.add(result_record)
+        await db.flush()
+
+        used_chunk_ids = {str(c.chunk_id) for c in context_result.chunks_used}
+        existing = await _get_existing_chunk_ids(db, [str(c.chunk_id) for c in ranked])
+        for rank, chunk in enumerate(ranked, start=1):
+            if str(chunk.chunk_id) not in existing:
+                continue
+            db.add(RetrievedChunkModel(
+                query_result_id=result_record.id, chunk_id=chunk.chunk_id,
+                retrieval_method=chunk.retrieval_method, vector_score=chunk.vector_score,
+                bm25_score=chunk.bm25_score, freshness_score=chunk.freshness_score,
+                rerank_score=chunk.rerank_score, final_score=chunk.final_score,
+                rank_position=rank, was_used_in_context=str(chunk.chunk_id) in used_chunk_ids,
+            ))
+        await db.flush()
+
+        if status == "low_confidence":
+            gap_reason = "hallucination_blocked" if hallucination_result.action == "block" else "low_confidence"
+            weak = [
+                {"title": c.document_title, "score": round(c.final_score, 4)}
+                for c in context_result.chunks_used[:3]
+            ]
+            try:
+                await record_knowledge_gap(db, workspace_id, query, gap_reason, query_id=query_record.id, weak_sources=weak)
+            except Exception as e:
+                logger.warning("knowledge_gap.record_failed", error=str(e))
+
+        yield {"type": "verdict", "data": {
+            "query_id": str(query_record.id), "result_id": str(result_record.id),
+            "session_id": str(query_record.session_id), "status": status,
+            "confidence": confidence, "verified": False, "citations": citations,
+            "has_conflicts": context_result.has_conflicts, "follow_up_suggestions": [],
+            "note": note, "answer_override": answer_override,
+        }}
+        yield {"type": "done"}
+
+    except Exception as e:
+        logger.error("pipeline_stream.failed", query_id=str(query_record.id), error=str(e))
+        yield {"type": "error", "data": "I'm temporarily unable to process your question. Please try again."}

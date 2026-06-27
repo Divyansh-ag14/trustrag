@@ -46,14 +46,13 @@ class TestLLMCost:
 
 
 class TestRerankCost:
-    def test_zero_docs(self):
+    def test_zero_searches(self):
         assert calculate_rerank_cost(0) == 0.0
 
-    def test_1000_docs(self):
-        cost = calculate_rerank_cost(1000)
-        assert abs(cost - 0.001) < 1e-8
+    def test_one_search_is_default(self):
+        # One query = one rerank search (not per document).
+        assert abs(calculate_rerank_cost() - 0.001) < 1e-8
+        assert abs(calculate_rerank_cost(1) - 0.001) < 1e-8
 
-    def test_50_docs(self):
-        cost = calculate_rerank_cost(50)
-        assert cost > 0
-        assert cost < 0.001
+    def test_multiple_searches(self):
+        assert abs(calculate_rerank_cost(1000) - 1.0) < 1e-8

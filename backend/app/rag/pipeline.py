@@ -166,7 +166,14 @@ async def process_query(
         qu_cost = calculate_llm_cost(
             analysis.prompt_tokens, analysis.completion_tokens, model="gpt-4o-mini"
         )
-        cost = _calculate_total_cost(query_tokens, len(retrieved), gen_result) + validation_cost + qu_cost
+        cost = _calculate_total_cost(query_tokens, gen_result) + validation_cost + qu_cost
+
+        token_usage = _aggregate_token_usage(
+            (gen_result.prompt_tokens, gen_result.completion_tokens),
+            (analysis.prompt_tokens, analysis.completion_tokens),
+            (citation_validation.prompt_tokens, citation_validation.completion_tokens),
+            (hallucination_result.prompt_tokens, hallucination_result.completion_tokens),
+        )
 
         citations = _build_citations(gen_result, context_result.chunks_used)
 
@@ -185,11 +192,7 @@ async def process_query(
             citation_accuracy=citation_validation.citation_accuracy,
             latency_ms=timings["total_ms"],
             latency_breakdown=timings,
-            token_usage={
-                "prompt_tokens": gen_result.prompt_tokens,
-                "completion_tokens": gen_result.completion_tokens,
-                "total_tokens": gen_result.total_tokens,
-            },
+            token_usage=token_usage,
             cost_usd=cost,
             citations=[c.copy() for c in citations],
             status=status,
@@ -273,11 +276,7 @@ async def process_query(
             "escalation_needed": gen_result.escalation_needed,
             "escalation_reason": gen_result.escalation_reason,
             "latency_breakdown": timings,
-            "token_usage": {
-                "prompt_tokens": gen_result.prompt_tokens,
-                "completion_tokens": gen_result.completion_tokens,
-                "total_tokens": gen_result.total_tokens,
-            },
+            "token_usage": token_usage,
             "cost_usd": float(cost),
             "retrieval_trace": {
                 "has_conflicts": context_result.has_conflicts,
@@ -407,13 +406,29 @@ async def _save_verified_answer(
 
 def _calculate_total_cost(
     query_tokens: int,
-    reranked_count: int,
     gen_result: GenerationResult,
 ) -> float:
     embed_cost = calculate_embedding_cost(query_tokens)
-    rerank_cost = calculate_rerank_cost(reranked_count)
+    # One rerank search per query, only when Cohere is actually configured.
+    rerank_cost = calculate_rerank_cost() if settings.COHERE_API_KEY else 0.0
     llm_cost = calculate_llm_cost(gen_result.prompt_tokens, gen_result.completion_tokens)
     return embed_cost + rerank_cost + llm_cost
+
+
+def _aggregate_token_usage(*usages: tuple[int, int]) -> dict:
+    """Sum prompt/completion tokens across every LLM call in a query.
+
+    The previous code stored only the generation call's tokens, so the Token
+    Usage analytics understated total spend (QU + citation + hallucination calls
+    were ignored).
+    """
+    prompt = sum(p for p, _ in usages)
+    completion = sum(c for _, c in usages)
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": prompt + completion,
+    }
 
 
 def _build_citations(
@@ -695,7 +710,15 @@ async def process_query_stream(
         )
         qu_cost = calculate_llm_cost(analysis.prompt_tokens, analysis.completion_tokens, model="gpt-4o-mini")
         gen_cost = calculate_llm_cost(gen_usage.get("prompt_tokens", 0), gen_usage.get("completion_tokens", 0))
-        cost = calculate_embedding_cost(query_tokens) + calculate_rerank_cost(len(retrieved)) + gen_cost + validation_cost + qu_cost
+        rerank_cost = calculate_rerank_cost() if settings.COHERE_API_KEY else 0.0
+        cost = calculate_embedding_cost(query_tokens) + rerank_cost + gen_cost + validation_cost + qu_cost
+
+        token_usage = _aggregate_token_usage(
+            (gen_usage.get("prompt_tokens", 0), gen_usage.get("completion_tokens", 0)),
+            (analysis.prompt_tokens, analysis.completion_tokens),
+            (citation_validation.prompt_tokens, citation_validation.completion_tokens),
+            (hallucination_result.prompt_tokens, hallucination_result.completion_tokens),
+        )
 
         result_record = QueryResult(
             query_id=query_record.id, answer=stored_answer, confidence_score=confidence,
@@ -703,7 +726,7 @@ async def process_query_stream(
             hallucination_score=hallucination_result.hallucination_score,
             citation_accuracy=citation_validation.citation_accuracy,
             latency_ms=timings["total_ms"], latency_breakdown=timings,
-            token_usage=gen_usage, cost_usd=cost,
+            token_usage=token_usage, cost_usd=cost,
             citations=[c.copy() for c in citations], status=status,
             retrieval_trace={
                 "has_conflicts": context_result.has_conflicts,
